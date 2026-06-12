@@ -28,7 +28,7 @@ class WorkerFedHM(object):
         self.rank = conf.graph.rank
         conf.graph.worker_id = conf.graph.rank
         self.device = torch.device("cuda" if self.conf.graph.on_cuda else "cpu")
-        conf.device = self.device
+
         # define the timer for different operations.
         # if we choose the `train_fast` mode, then we will not track the time.
         self.timer = Timer(
@@ -54,10 +54,10 @@ class WorkerFedHM(object):
         # define the criterion.
         self.criterion = nn.CrossEntropyLoss(reduction="mean")
 
+
         conf.logger.log(
             f"Worker-{conf.graph.worker_id} initialized dataset/criterion.\n"
         )   # 打印当前的进程编号
-
     def recv_extra_info_from_master(self):
         pass
 
@@ -95,6 +95,7 @@ class WorkerFedHM(object):
                 return
     def extra_init(self):
         pass
+      
 
     def listen_to_master(self):
         # listen to master, related to the function `_activate_selected_clients` in `master.py`.
@@ -104,9 +105,6 @@ class WorkerFedHM(object):
         self.conf.graph.client_id, self.conf.graph.comm_round, self.n_local_epochs = (
             msg[:3, self.conf.graph.rank - 1].to(int).cpu().numpy().tolist()
         ) # 取出属于自己的消息
-        
-        if self.conf.rank_list is not None:
-            self.ratio_LR = self.conf.rank_list[self.conf.graph.client_id - 1]  # 取出属于自己的秩
 
         # once we receive the signal, we init for the local training.
         self.arch, self.model = create_model.define_model(
@@ -139,7 +137,7 @@ class WorkerFedHM(object):
         self.model_tb.unpack(self.model_state_dict.values()) # 将接受的参数填入模型字典
 
         # if not self.conf.freeze_bn:
-        self.model.load_state_dict(self.model_state_dict)   # 更新模型参数
+        self.model.load_state_dict(self.model_state_dict,strict=False)   # 更新模型参数 strict=False 以容忍 adapter 参数缺失
         random_reinit.random_reinit_model(self.conf, self.model)    # 若为true，这里可能会随机丢弃参数
         self.init_model = self._turn_off_grad(copy.deepcopy(self.model).to(self.device)) # 获得一个关闭了梯度的一摸一样的模型，常用于蒸馏
 
@@ -175,8 +173,19 @@ class WorkerFedHM(object):
     def prepare_train(self):
         self._prepare_train()
 
-    def local_training_with_extra_calculate(self, loss, output, data_batch, feature = None):
-        return loss + self.conf.meta_L2*self.model.L2_decay()
+    # 添加正则项 和使用原型的mse损失    
+    def local_training_with_extra_calculate(self, loss, output, data_batch, feature):
+        if hasattr(self.model, "get_decomposed_loss"):
+            # 2. 计算正则损失
+            # type 可选: 'frobenius', 'kronecker', 'l2' 
+            decom_reg = self.model.get_decomposed_loss(type='frobenius') 
+            
+            # 4. 将正则项加到总 Loss 中
+            loss += self.conf.meta_L2 * decom_reg
+
+
+
+        return loss 
 
     def add_grad(self):
         pass
@@ -196,10 +205,12 @@ class WorkerFedHM(object):
 
                 # inference and get current performance.
                 with self.timer("forward_pass", epoch=self.scheduler.epoch_):
-                    loss, performance, output = self._inference(data_batch)    # 前向传播
+                    loss, performance, feature, output = self._inference(data_batch)    # 前向传播 计算损失
 
                 with self.timer("extra_forward_pass", epoch=self.scheduler.epoch_):
-                    loss = self.local_training_with_extra_calculate(loss, output, data_batch)  # 计算L2损失
+                    # 添加额外的计算 分解的损失
+                    loss = self.local_training_with_extra_calculate(loss, output, data_batch, feature)  # 这里没有额外的训练
+
                 with self.timer("backward_pass", epoch=self.scheduler.epoch_):
                     self.optimizer.zero_grad()
                     loss.backward()
@@ -242,7 +253,7 @@ class WorkerFedHM(object):
     def _inference(self, data_batch):
         """Inference on the given model and get loss and accuracy."""
         # do the forward pass and get the output.
-        _,output = self.model(data_batch["input"]) 
+        feature, output = self.model(data_batch["input"]) 
 
         # evaluate the output and get the loss, performance.
         if self.conf.use_mixup:
@@ -274,7 +285,7 @@ class WorkerFedHM(object):
                 self.tracker.update_local_metrics(
                     performance[idx - 1], idx, n_samples=bsz
                 )
-        return loss, performance, output
+        return loss, performance, feature, output
 
     def attention(self, x):
         """
@@ -303,7 +314,12 @@ class WorkerFedHM(object):
         self.conf.logger.log(
             f"Worker-{self.conf.graph.worker_id} (client-{self.conf.graph.client_id}) sending the model ({self.arch}) back to Master."
         )
-        flatten_model = TensorBuffer(list(self.model.state_dict().values()))    # 打包数据
+
+        
+        state_dict = self.model.state_dict()
+        to_send_dict = {k: v for k, v in state_dict.items() if 'clip_adapter' not in k}
+
+        flatten_model = TensorBuffer(list(to_send_dict.values()))    # 打包数据
         dist.send(tensor=flatten_model.buffer, dst=0)   # 发送
         dist.barrier()      # 等待其他客户端
 
@@ -339,5 +355,7 @@ class WorkerFedHM(object):
 
     def _is_finished_one_comm_round(self):
         return True if self.conf.epoch_ >= self.conf.local_n_epochs else False
+
+
 
 

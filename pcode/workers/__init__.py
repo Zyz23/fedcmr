@@ -6,4 +6,9 @@ from .worker_fedgen import *
 from .worker_feddistill import *
 from .worker_fedprox import *
 from .worker_feddyn import *
+from .worker_fedour import *
+from .worker_a  import *
 from .worker_fedhm import *
+from .worker_fjord import *
+from .worker_fiarse import *
+from .worker_fedsam import *

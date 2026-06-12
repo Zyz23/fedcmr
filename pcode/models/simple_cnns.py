@@ -135,75 +135,101 @@ class CNNCifar5Layer(nn.Module):
 
         # === 5层卷积结构 (VGG Style Block: Conv-BN-ReLU) ===
         
-        # Layer 1: 3 -> 32
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1, bias=use_bias)
-        self.bn1 = nn.BatchNorm2d(32)
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=5, padding=0, stride=1, bias=True)
+        # self.bn1 = nn.GroupNorm(32, 32)
         
-        # Layer 2: 32 -> 64
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=use_bias)
-        self.bn2 = nn.BatchNorm2d(64)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=5, padding=0, stride=1, bias=True)
+        # self.bn2 = nn.GroupNorm(64, 64)
         
-        # Layer 3: 64 -> 128
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=use_bias)
-        self.bn3 = nn.BatchNorm2d(128)
+        # # Layer 3: 64 -> 128
+        # self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=use_bias)
+        # self.bn3 = nn.GroupNorm(128, 128)
         
-        # Layer 4: 128 -> 256
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=use_bias)
-        self.bn4 = nn.BatchNorm2d(256)
+        # # Layer 4: 128 -> 256
+        # self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=use_bias)
+        # self.bn4 = nn.GroupNorm(256, 256)
         
-        # Layer 5: 256 -> 256 (保持通道数，提取高层语义)
-        self.conv5 = nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=use_bias)
-        self.bn5 = nn.BatchNorm2d(256)
+        # # Layer 5: 256 -> 256 (保持通道数，提取高层语义)
+        # self.conv5 = nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=use_bias)
+        # self.bn5 = nn.GroupNorm(256, 256)
 
         # 池化层
         self.pool = nn.MaxPool2d(2, 2)
+        self.relu = nn.ReLU(inplace=True)
+        self.flatten = nn.Flatten()
         
         # Dropout (防止过拟合)
-        self.dropout = nn.Dropout(p=0.5)
+        # self.dropout = nn.Dropout(p=0.5)
 
         # 计算全连接层输入维度
         # 32x32 -> (Pool) -> 16x16 -> (Pool) -> 8x8 -> (Pool) -> 4x4
         # 最终特征图大小: 256 channels * 4 * 4 = 4096
-        self.fc1 = nn.Linear(256 * 4 * 4, 512, bias=w_fc_bias)
+        self.fc1 = nn.Linear(1600, 512, bias=w_fc_bias)
+
         self.classifier = nn.Linear(512, self.num_classes, bias=w_fc_bias)
 
         self.save_activations = save_activations
         self.activations = None
 
-    def forward(self, x):
-        # Block 1
-        x = self.conv1(x)
-        x = F.relu(self.bn1(x))
-        x = self.pool(x)        # 32 -> 16
-        
-        # Block 2
-        x = self.conv2(x)
-        x = F.relu(self.bn2(x)) 
-        # 这里不加池化，保持特征更丰富，或者隔层池化
-        
-        # Block 3
-        x = self.conv3(x)
-        x = F.relu(self.bn3(x))
-        x = self.pool(x)        # 16 -> 8
-        
-        # Block 4
-        x = self.conv4(x)
-        x = F.relu(self.bn4(x))
-        # 不加池化
-        
-        # Block 5
-        x = self.conv5(x)
-        x = F.relu(self.bn5(x))
-        x = self.pool(x)        # 8 -> 4
+        # 构建共享基础部分
+        self.base = nn.Sequential(
+            self.conv1,
+            self.relu,
+            self.pool,
+            self.conv2,
+            self.relu,
+            self.pool,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+        # 分类头
+        self.head =self.classifier
 
-        # Flatten
-        x = x.view(-1, 256 * 4 * 4)
+
         
-        # FC Block
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)     # 关键：训练时随机丢弃神经元
+
+
+    def forward(self, x,start_layer_idx=0):
+        if start_layer_idx < 0:
+            
+            logits = self.head(x)
+            return x, logits
+        # Block 1
+        # x = self.conv1(x)
+        # x = F.relu(self.bn1(x))
+        # x = self.pool(x)        # 32 -> 16
         
-        logits = self.classifier(x)
+        # # Block 2
+        # x = self.conv2(x)
+        # x = F.relu(self.bn2(x)) 
+        # # 这里不加池化，保持特征更丰富，或者隔层池化
+        
+        # # Block 3
+        # x = self.conv3(x)
+        # x = F.relu(self.bn3(x))
+        # x = self.pool(x)        # 16 -> 8
+        
+        # # Block 4
+        # x = self.conv4(x)
+        # x = F.relu(self.bn4(x))
+        # # 不加池化
+        
+        # # Block 5
+        # x = self.conv5(x)
+        # x = F.relu(self.bn5(x))
+        # x = self.pool(x)        # 8 -> 4
+
+        # # Flatten
+        # x = x.view(-1, 256 * 4 * 4)
+        
+        # # FC Block
+        # x = F.relu(self.fc1(x))
+        # x = self.dropout(x)     # 关键：训练时随机丢弃神经元
+        
+        # logits = self.classifier(x)
+        x = self.base(x)
+        logits = self.head(x)
 
         return x, logits # 返回 feat, logits 保持与之前接口一致
 
@@ -221,97 +247,118 @@ class MetaCNN(nn.Module):
         use_conv_bias = False 
 
         # === 前4层卷积 (保持固定，不进行分解) ===
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1, bias=use_conv_bias)
-        self.bn1 = nn.BatchNorm2d(32)
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=5, padding=0, stride=1, bias=True)
+   
         
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=use_conv_bias)
-        self.bn2 = nn.BatchNorm2d(64)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=5, padding=0, stride=1, bias=True)
         
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=use_conv_bias)
-        self.bn3 = nn.BatchNorm2d(128)
-        
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=use_conv_bias)
-        self.bn4 = nn.BatchNorm2d(256)
-
-        # === 第5层卷积 (可分解目标) ===
-        # 输入: 256, 输出: 256
-        if rank_rate >= 1.0:
-            self.conv5 = nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=use_conv_bias)
-        else:
-            self.conv5 = FactorizedConv(in_channels=256, out_channels=256, 
-                                        rank_rate=rank_rate, kernel_size=3, 
-                                        padding=1, stride=1, bias=use_conv_bias)
-        
-        self.bn5 = nn.BatchNorm2d(256)
 
         # 池化与Dropout
         self.pool = nn.MaxPool2d(2, 2)
-        self.dropout = nn.Dropout(p=0.5)
+        # self.dropout = nn.Dropout(p=0.5)
 
-        # 计算Flatten后的维度: 256 * 4 * 4 = 4096
-        self.flat_dim = 256 * 4 * 4
+        self.relu = nn.ReLU(inplace=True)
+        self.flatten = nn.Flatten()
+        # # 计算Flatten后的维度: 256 * 4 * 4 = 4096
+        # self.flat_dim = 256 * 4 * 4
         
         # === FC1 层 (可分解目标) ===
         # 输入: 4096, 输出: 512
         if rank_rate >= 1.0:
-            self.fc1 = nn.Linear(self.flat_dim, 512, bias=w_fc_bias)
+            self.fc1 = nn.Linear(1600, 512)
         else:
-            self.fc1 = FactorizedLinear(in_features=self.flat_dim, out_features=512, 
+            self.fc1 = FactorizedLinear(1600, out_features=512, 
                                         rank_rate=rank_rate, bias=w_fc_bias)
 
         # === Classifier (保持固定) ===
-        self.classifier = nn.Linear(512, self.num_classes, bias=w_fc_bias)
+        # self.classifier = nn.Linear(512, self.num_classes)
+
+         # 构建共享基础部分
+        self.base = nn.Sequential(
+            self.conv1,
+            self.relu,
+            self.pool,
+            self.conv2,
+            self.relu,
+            self.pool,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+        # 分类头
+        # self.head =self.classifier
+
+        # [ADD] 新增全局共享、可训练的 CLIP 适配层
+        # 输入是 fc1 输出的 512 维特征，输出是对齐 CLIP 的 512 维特征
+        self.clip_adapter = nn.Sequential(
+                nn.Linear(512, 512),
+                nn.ReLU(inplace=True),
+                nn.Linear(512, 512)
+                )
+    def set_text_anchors(self, anchors):
+        """设置文本锚点特征 (CLIP 生成的文本特征)"""
+        anchors = F.normalize(anchors,p=2, dim=-1) # L2 归一化
+
+        self.register_buffer('text_anchors', anchors, persistent=False) # 不更新也不打包传播
 
     def forward(self, x):
-        # Layer 1
-        x = self.pool(F.relu(self.bn1(self.conv1(x))))
-        # Layer 2 (No pool)
-        x = F.relu(self.bn2(self.conv2(x)))
-        # Layer 3
-        x = self.pool(F.relu(self.bn3(self.conv3(x))))
-        # Layer 4 (No pool)
-        x = F.relu(self.bn4(self.conv4(x)))
-        
-        # === Layer 5 (可能已分解) ===
-        # 注意: FactorizedConv 的 forward 已经处理了卷积逻辑
-        x = self.conv5(x) 
-        x = self.pool(F.relu(self.bn5(x)))
+      
+        x = self.base(x)
+        # logits = self.head(x)
 
-        # Flatten
-        x = x.view(-1, self.flat_dim)
+        # 基于原型推理
+        aligned_feature = self.clip_adapter(x)
+        aligned_feature = F.normalize(aligned_feature, p=2, dim=-1)
 
-        # === FC1 (可能已分解) ===
-        x = self.fc1(x)
-        x = F.relu(x)
-        
-        # Dropout & Classifier
-        x = self.dropout(x)
-        logits = self.classifier(x)
+        if hasattr(self, 'text_anchors') and self.text_anchors is not None:
+            # 计算与文本锚点的相似度 (点积) 并应用温度缩放
+            # logits = self.logit_scale.exp() * aligned_feature @ self.text_anchors.T
+            logit_scale = torch.clamp(self.logit_scale.exp(), max=100.0)
+            logits = logit_scale * aligned_feature @ self.text_anchors.T
+        else:
+            print("Warning: Text anchors not set. Returning unscaled features as logits.")
 
-        return x, logits
+
+        return aligned_feature, logits
 
     # === 模型分解与恢复方法 ===
 
     def decom_model(self, rank_rate):
-        """将 conv5 和 fc1 分解为低秩层"""
+        """将 fc1 分解为低秩层"""
         if rank_rate >= 1.0:
             return
         
         print(f"Executing Decomposition (rank_rate={rank_rate})...")
         
         # 分解 Conv5
-        if isinstance(self.conv5, nn.Conv2d):
-            # 调用你提供的 Decom_COV
-            self.conv5 = Decom_COV(self.conv5, rank_rate)
-            print(" -> conv5 decomposed.")
+        # if isinstance(self.conv5, nn.Conv2d):
+        #     # 调用你提供的 Decom_COV
+        #     self.conv5 = Decom_COV(self.conv5, rank_rate)
+        #     print(" -> conv5 decomposed.")
 
         # 分解 FC1
         if isinstance(self.fc1, nn.Linear):
             # 调用你提供的 Decom_LINEAR
             self.fc1 = Decom_LINEAR(self.fc1, rank_rate)
             print(" -> fc1 decomposed.")
+        
+        self._rebuid_base() # 分解完成后重构基础组件
             
         self.rank_rate = rank_rate
+
+    def _rebuid_base(self):
+        """重建基础层的 Sequential 模块 (在分解或恢复后调用)"""
+        self.base = nn.Sequential(
+            self.conv1,
+            self.relu,
+            self.pool,
+            self.conv2,
+            self.relu,
+            self.pool,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
 
     def recover_model(self):
         """将 conv5 和 fc1 恢复为完整层"""
@@ -321,18 +368,18 @@ class MetaCNN(nn.Module):
         print("Executing Recovery to Full Rank...")
 
         # 恢复 Conv5
-        if isinstance(self.conv5, FactorizedConv):
-            # 调用你提供的 Recover_COV
-            self.conv5 = Recover_COV(self.conv5)
-            print(" -> conv5 recovered.")
+        # if isinstance(self.conv5, FactorizedConv):
+        #     # 调用你提供的 Recover_COV
+        #     self.conv5 = Recover_COV(self.conv5)
+        #     print(" -> conv5 recovered.")
 
         # 恢复 FC1
         if isinstance(self.fc1, FactorizedLinear):
             # 调用你提供的 Recover_LINEAR
             self.fc1 = Recover_LINEAR(self.fc1)
             print(" -> fc1 recovered.")
-            
-        # self.rank_rate = 1.0
+        self._rebuid_base()
+        self.rank_rate = 1.0
 
     # === 正则化 Loss 计算 (用于低秩训练阶段) ===
     
@@ -344,10 +391,10 @@ class MetaCNN(nn.Module):
             return loss
 
         # 获取 Conv5 的 loss
-        if isinstance(self.conv5, FactorizedConv):
-            if type == 'frobenius': loss += self.conv5.frobenius_loss()
-            elif type == 'kronecker': loss += self.conv5.kronecker_loss()
-            elif type == 'l2': loss += self.conv5.L2_loss()
+        # if isinstance(self.conv5, FactorizedConv):
+        #     if type == 'frobenius': loss += self.conv5.frobenius_loss()
+        #     elif type == 'kronecker': loss += self.conv5.kronecker_loss()
+        #     elif type == 'l2': loss += self.conv5.L2_loss()
 
         # 获取 FC1 的 loss
         if isinstance(self.fc1, FactorizedLinear):
@@ -357,8 +404,622 @@ class MetaCNN(nn.Module):
             
         return loss
 
-
+class MetaCNN3(nn.Module):
+    def __init__(self, dataset, w_conv_bias=False, w_fc_bias=True, rank_rate=1.0):
+        super(MetaCNN3, self).__init__()
         
+        self.num_classes = _decide_num_classes(dataset)
+        self.rank_rate = rank_rate # 秩率
+        self.w_conv_bias = w_conv_bias # 记录配置以便恢复时使用
+        self.w_fc_bias = w_fc_bias
+
+        # BN层通常不需要卷积偏置
+        use_conv_bias = False 
+
+        # === 前4层卷积 (保持固定，不进行分解) ===
+        # 注意：这里改用了 kernel_size=3, padding=1，这在4层CNN中更常见，
+        # 能避免特征图缩小过快，从而严格对齐你注释中的 256 * 4 * 4 = 4096 维度 (假设输入为32x32)
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1, stride=1, bias=True)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, stride=1, bias=True)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=1, bias=True)
+        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=1, bias=True)
+
+        # 池化与激活
+        self.pool = nn.MaxPool2d(2, 2)
+        self.relu = nn.ReLU(inplace=True)
+        self.flatten = nn.Flatten()
+        
+        # 计算Flatten后的维度: 假设经过3次池化 (32->16->8->4)，256 * 4 * 4 = 4096
+        # 如果你的输入图片尺寸不是 32x32，这里需要相应调整
+        self.flat_dim = 4096
+        
+        # === FC1 层 (可分解目标) ===
+        # 输入: 4096 (基于上方计算), 输出: 512
+        if rank_rate >= 1.0:
+            self.fc1 = nn.Linear(self.flat_dim, 512)
+        else:
+            self.fc1 = FactorizedLinear(self.flat_dim, out_features=512, 
+                                        rank_rate=rank_rate, bias=w_fc_bias)
+
+        # === Classifier (保持固定) ===
+        # self.classifier = nn.Linear(512, self.num_classes)
+
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+
+        # 构建共享基础部分 (加入 conv3 和 conv4 及其对应的池化/激活)
+        self.base = nn.Sequential(
+            self.conv1, self.relu, self.pool,
+            self.conv2, self.relu, self.pool,
+            self.conv3, self.relu, self.pool,
+            self.conv4, self.relu, # 这里假设第4层后不接池化，或者可以根据需要补上 self.pool
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+        
+        # 分类头
+        # self.head =self.classifier
+
+        # [ADD] 新增全局共享、可训练的 CLIP 适配层
+        self.clip_adapter = nn.Sequential(
+                nn.Linear(512, 512),
+                nn.ReLU(inplace=True),
+                # nn.Linear(512, 512)
+                )
+
+    def set_text_anchors(self, anchors):
+        """设置文本锚点特征 (CLIP 生成的文本特征)"""
+        anchors = F.normalize(anchors, p=2, dim=-1) # L2 归一化
+        self.register_buffer('text_anchors', anchors, persistent=False) # 不更新也不打包传播
+
+    def forward(self, x):
+        # 卷积池化基础层
+        x = self.base(x)
+        # logits = self.head(x)
+        
+        # 基于原型推理
+        aligned_feature = self.clip_adapter(x)
+        aligned_feature = F.normalize(aligned_feature, p=2, dim=-1)
+
+        if hasattr(self, 'text_anchors') and self.text_anchors is not None:
+            # 计算与文本锚点的相似度 (点积) 并应用温度缩放
+            logit_scale = torch.clamp(self.logit_scale.exp(), max=100.0)
+            logits = logit_scale * aligned_feature @ self.text_anchors.T
+        else:
+            print("Warning: Text anchors not set. Returning unscaled features as logits.")
+            logits = aligned_feature @ self.text_anchors.T if hasattr(self, 'text_anchors') else None
+
+        return aligned_feature, logits
+
+    # === 模型分解与恢复方法 ===
+
+    def decom_model(self, rank_rate):
+        """将 fc1 分解为低秩层"""
+        if rank_rate >= 1.0:
+            return
+        
+        print(f"Executing Decomposition (rank_rate={rank_rate})...")
+
+        # 分解 FC1
+        if isinstance(self.fc1, nn.Linear):
+            # 调用你提供的 Decom_LINEAR
+            self.fc1 = Decom_LINEAR(self.fc1, rank_rate)
+            print(" -> fc1 decomposed.")
+        
+        self._rebuid_base() # 分解完成后重构基础组件
+            
+        self.rank_rate = rank_rate
+
+    def _rebuid_base(self):
+        """重建基础层的 Sequential 模块 (在分解或恢复后调用)"""
+        self.base = nn.Sequential(
+            self.conv1, self.relu, self.pool,
+            self.conv2, self.relu, self.pool,
+            self.conv3, self.relu, self.pool,
+            self.conv4, self.relu,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+
+    def recover_model(self):
+        """将 fc1 恢复为完整层"""
+        if self.rank_rate >= 1.0:
+            return
+
+        print("Executing Recovery to Full Rank...")
+
+        # 恢复 FC1
+        if isinstance(self.fc1, FactorizedLinear):
+            # 调用你提供的 Recover_LINEAR
+            self.fc1 = Recover_LINEAR(self.fc1)
+            print(" -> fc1 recovered.")
+            
+        self._rebuid_base()
+        self.rank_rate = 1.0
+
+    # === 正则化 Loss 计算 (用于低秩训练阶段) ===
+    
+    def L2_decay(self, type='frobenius'):
+        """计算分解层的正则化损失"""
+        loss = torch.tensor(0.0, device=self.conv1.weight.device)
+        
+        if self.rank_rate >= 1.0:
+            return loss
+
+        # 获取 FC1 的 loss
+        if isinstance(self.fc1, FactorizedLinear):
+            if type == 'frobenius': loss += self.fc1.frobenius_loss()
+            elif type == 'kronecker': loss += self.fc1.kronecker_loss()
+            elif type == 'l2': loss += self.fc1.L2_loss()
+            
+        return loss
+
+class CNNCifar5Layer3(nn.Module):
+    def __init__(self, dataset, w_conv_bias=True, w_fc_bias=True, save_activations=True):
+        super(CNNCifar5Layer3, self).__init__()
+
+        # 确定类别数
+        self.num_classes = _decide_num_classes(dataset)
+        
+        # === 4层卷积结构 (保持与 MetaCNN 一致的对齐结构) ===
+        # 统一使用 kernel_size=3, padding=1，防止特征图过早缩小到无法计算
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+
+        # 池化与激活
+        self.pool = nn.MaxPool2d(2, 2)
+        self.relu = nn.ReLU(inplace=True)
+        self.flatten = nn.Flatten()
+        
+        # === 第5层提取层 (FC1) ===
+        # 计算全连接层输入维度:
+        # 输入 32x32 -> (Pool) 16x16 -> (Pool) 8x8 -> (Pool) 4x4
+        # 最终特征图大小: 256 channels * 4 * 4 = 4096
+        self.flat_dim = 4096
+        self.fc1 = nn.Linear(self.flat_dim, 512, bias=w_fc_bias)
+
+        # === 分类器 ===
+        self.head = nn.Linear(512, self.num_classes, bias=w_fc_bias)
+
+        self.save_activations = save_activations
+        self.activations = None
+
+        # # 构建共享基础部分 (4 Conv + 1 FC = 5 提取层)
+        # self.base = nn.Sequential(
+        #     self.conv1, self.relu, self.pool,
+        #     self.conv2, self.relu, self.pool,
+        #     self.conv3, self.relu, self.pool,
+        #     self.conv4, self.relu, # 第4层卷积后不接池化，以对齐 4096 的展平维度
+        #     self.flatten,
+        #     self.fc1,
+        #     self.relu
+        # )
+        
+        # 分类头
+        # self.head = self.classifier
+
+    def forward(self, x, start_layer_idx=0):
+        # 兼容你原有的分层截断前向逻辑
+        if start_layer_idx < 0:
+            logits = self.head(x)
+            return x, logits
+            
+        # 基础特征提取
+        # x = self.base(x)
+        # 基础特征提取 (手动执行，替代 Sequential)
+        x = self.pool(self.relu(self.conv1(x)))
+        x = self.pool(self.relu(self.conv2(x)))
+        x = self.pool(self.relu(self.conv3(x)))
+        x = self.relu(self.conv4(x)) # 第4层卷积后不接池化
+        x = self.flatten(x)
+        x = self.relu(self.fc1(x))
+        # 获取预测 logits
+        logits = self.head(x)
+
+        return x, logits # 返回 feat, logits
+
+
+
+
+
+"""
+针对femnist设计的分解低质网络
+"""
+class MetaCNNFemnist(nn.Module):
+    def __init__(self, dataset, w_conv_bias=True, w_fc_bias=True, rank_rate=1.0):
+        super(MetaCNNFemnist, self).__init__()
+        
+        # 决定分类数 (FEMNIST 通常为 62 类)
+        self.num_classes = _decide_num_classes(dataset)
+        self.rank_rate = rank_rate # 秩率
+        self.w_conv_bias = w_conv_bias # 记录配置以便恢复时使用
+        self.w_fc_bias = w_fc_bias
+
+        # === 前2层卷积 (保持固定，不进行分解) ===
+        # FEMNIST 输入是 1通道 (28x28)
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=5, padding=0, stride=1, bias=w_conv_bias)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=5, padding=0, stride=1, bias=w_conv_bias)
+        
+        # 池化与激活
+        self.pool = nn.MaxPool2d(2, 2)
+        self.relu = nn.ReLU(inplace=True)
+        self.flatten = nn.Flatten()
+        
+        # 计算FEMNIST Flatten后的维度: 64通道 * 4 * 4 = 1024
+        self.flat_dim = 1024
+        # 根据标准 CNNfemnist，FC1 的输出维度为 2048
+        self.fc1_out_dim = 2048
+        
+        # === FC1 层 (可分解目标) ===
+        # 输入: 1024, 输出: 2048
+        if rank_rate >= 1.0:
+            self.fc1 = nn.Linear(self.flat_dim, self.fc1_out_dim, bias=w_fc_bias)
+        else:
+            self.fc1 = FactorizedLinear(self.flat_dim, out_features=self.fc1_out_dim, 
+                                        rank_rate=rank_rate, bias=w_fc_bias)
+
+        # 构建共享基础部分 (和标准 CNNfemnist 一致的提取流程)
+        self.base = nn.Sequential(
+            self.conv1,
+            self.relu,
+            self.pool,
+            self.conv2,
+            self.relu,
+            self.pool,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+
+        # [ADD] 新增全局共享、可训练的 CLIP 适配层
+        # 输入是 fc1 输出的 2048 维特征，输出是对齐 CLIP 的 512 维特征
+        self.clip_adapter = nn.Sequential(
+                nn.Linear(self.fc1_out_dim, 512),
+                nn.ReLU(inplace=True),
+        )
+        
+        # CLIP 的温度缩放参数 (初始化为 CLIP 的默认值)
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+
+    def set_text_anchors(self, anchors):
+        """设置文本锚点特征 (CLIP 生成的文本特征)"""
+        anchors = F.normalize(anchors, p=2, dim=-1) # L2 归一化
+        self.register_buffer('text_anchors', anchors, persistent=False) # 不更新也不打包传播
+
+    def forward(self, x):
+        # 基础特征提取
+        x = self.base(x)
+
+        # 基于原型推理
+        aligned_feature = self.clip_adapter(x)
+        aligned_feature = F.normalize(aligned_feature, p=2, dim=-1)
+
+        if hasattr(self, 'text_anchors') and self.text_anchors is not None:
+            # 计算与文本锚点的相似度 (点积) 并应用温度缩放
+            logit_scale = torch.clamp(self.logit_scale.exp(), max=100.0)
+            logits = logit_scale * aligned_feature @ self.text_anchors.T
+        else:
+            print("Warning: Text anchors not set. Returning unscaled features as logits.")
+            logits = aligned_feature # 或者您可以自定义 fallback 逻辑
+
+        return aligned_feature, logits
+
+    # === 模型分解与恢复方法 ===
+
+    def decom_model(self, rank_rate):
+        """将 fc1 分解为低秩层"""
+        if rank_rate >= 1.0:
+            return
+        
+        print(f"Executing Decomposition (rank_rate={rank_rate})...")
+        
+        # 分解 FC1
+        if isinstance(self.fc1, nn.Linear):
+            # 调用你提供的 Decom_LINEAR
+            self.fc1 = Decom_LINEAR(self.fc1, rank_rate)
+            print(" -> fc1 decomposed.")
+        
+        self._rebuid_base() # 分解完成后重构基础组件
+        self.rank_rate = rank_rate
+
+    def _rebuid_base(self):
+        """重建基础层的 Sequential 模块 (在分解或恢复后调用)"""
+        self.base = nn.Sequential(
+            self.conv1,
+            self.relu,
+            self.pool,
+            self.conv2,
+            self.relu,
+            self.pool,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+
+    def recover_model(self):
+        """将 fc1 恢复为完整层"""
+        if self.rank_rate >= 1.0:
+            return
+
+        print("Executing Recovery to Full Rank...")
+
+        # 恢复 FC1
+        if isinstance(self.fc1, FactorizedLinear):
+            # 调用你提供的 Recover_LINEAR
+            self.fc1 = Recover_LINEAR(self.fc1)
+            print(" -> fc1 recovered.")
+            
+        self._rebuid_base()
+        self.rank_rate = 1.0
+
+    # === 正则化 Loss 计算 (用于低秩训练阶段) ===
+    
+    def get_decomposed_loss(self, type='frobenius'):
+        """计算分解层的正则化损失"""
+        loss = torch.tensor(0.0, device=self.conv1.weight.device)
+        
+        if self.rank_rate >= 1.0:
+            return loss
+
+        # 获取 FC1 的 loss
+        if isinstance(self.fc1, FactorizedLinear):
+            if type == 'frobenius': loss += self.fc1.frobenius_loss()
+            elif type == 'kronecker': loss += self.fc1.kronecker_loss()
+            elif type == 'l2': loss += self.fc1.L2_loss()
+            
+        return loss
+       
+"""
+tiny数据集模型
+"""
+class CNNTiny(nn.Module):
+    def __init__(self, dataset="imagenet_tiny", w_conv_bias=True, w_fc_bias=True, save_activations=True):
+        super(CNNTiny, self).__init__()
+        self.num_classes = 200
+        
+        # 去除了 GroupNorm，直接保留卷积层
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        
+        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+
+        self.pool = nn.MaxPool2d(2, 2)
+        self.relu = nn.ReLU(inplace=True)
+        self.flatten = nn.Flatten()
+        
+        # 针对 64x64 输入，经过 3 次 2x2 池化后尺寸为 8x8
+        # 256 * 8 * 8 = 16384
+        self.flat_dim = 16384
+        self.fc1 = nn.Linear(self.flat_dim, 512, bias=w_fc_bias)
+        self.head = nn.Linear(512, self.num_classes, bias=w_fc_bias)
+
+        self.save_activations = save_activations
+        self.activations = None
+
+    def forward(self, x, start_layer_idx=0):
+        if start_layer_idx < 0:
+            return x, self.head(x)
+            
+        # 前向传播时去除 GN 的调用
+        x = self.pool(self.relu(self.conv1(x)))
+        x = self.pool(self.relu(self.conv2(x)))
+        x = self.pool(self.relu(self.conv3(x)))
+        x = self.relu(self.conv4(x)) # 第4层按原逻辑不接池化
+        
+        x = self.flatten(x)
+        # x = self.dropout(x) # 依然保留了注释状态，如果你后续在 Non-IID 下训练遇到严重过拟合，可以把这行解开
+        x = self.relu(self.fc1(x))
+        
+        logits = self.head(x)
+        return x, logits    
+
+class MetaCNN3_tiny(nn.Module):
+    def __init__(self, dataset, w_conv_bias=False, w_fc_bias=True, rank_rate=1.0):
+        super(MetaCNN3_tiny, self).__init__()
+       
+        self.num_classes = 200
+        self.rank_rate = rank_rate # 秩率
+        self.w_conv_bias = w_conv_bias # 记录配置以便恢复时使用
+        self.w_fc_bias = w_fc_bias
+
+        # BN层通常不需要卷积偏置
+        use_conv_bias = False
+
+        # === 前4层卷积 (保持固定，不进行分解) ===
+        # 注意：这里改用了 kernel_size=3, padding=1，这在4层CNN中更常见，
+        # 能避免特征图缩小过快，从而严格对齐你注释中的 256 * 4 * 4 = 4096 维度 (假设输入为32x32)
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1, stride=1, bias=True)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, stride=1, bias=True)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=1, bias=True)
+        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=1, bias=True)
+
+        # 池化与激活
+        self.pool = nn.MaxPool2d(2, 2)
+        self.relu = nn.ReLU(inplace=True)
+        self.flatten = nn.Flatten()
+
+        # 计算Flatten后的维度: 假设经过3次池化 (32->16->8->4)，256 * 4 * 4 = 4096
+        # 如果你的输入图片尺寸不是 32x32，这里需要相应调整
+        self.flat_dim = 256 * 8 * 8    
+        # === FC1 层 (可分解目标) ===
+        # 输入: 4096 (基于上方计算), 输出: 512
+        if rank_rate >= 1.0:
+            self.fc1 = nn.Linear(self.flat_dim, 512)
+        else:
+            self.fc1 = FactorizedLinear(self.flat_dim, out_features=512,
+                                        rank_rate=rank_rate, bias=w_fc_bias)
+
+        # === Classifier (保持固定) ===
+        # self.classifier = nn.Linear(512, self.num_classes)
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+
+        # 构建共享基础部分 (加入 conv3 和 conv4 及其对应的池化/激活)
+        self.base = nn.Sequential(
+            self.conv1, self.relu, self.pool,
+            self.conv2, self.relu, self.pool,
+            self.conv3, self.relu, self.pool,
+            self.conv4, self.relu, # 这里假设第4层后不接池化，或者可以根据需要补上 self.pool
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+
+        # [ADD] 新增全局共享、可训练的 CLIP 适配层
+        self.clip_adapter = nn.Sequential(
+                nn.Linear(512, 512),
+                nn.ReLU(inplace=True),
+                # nn.Linear(512, 512)
+
+                )
+
+    def set_text_anchors(self, anchors):
+        """设置文本锚点特征 (CLIP 生成的文本特征)"""
+        anchors = F.normalize(anchors, p=2, dim=-1) # L2 归一化
+        self.register_buffer('text_anchors', anchors, persistent=False) # 不更新也不打包传播
+
+    def forward(self, x):
+        # 卷积池化基础层
+        x = self.base(x)
+       
+        # 基于原型推理
+        aligned_feature = self.clip_adapter(x)
+        aligned_feature = F.normalize(aligned_feature, p=2, dim=-1)
+
+        if hasattr(self, 'text_anchors') and self.text_anchors is not None:
+            # 计算与文本锚点的相似度 (点积) 并应用温度缩放
+            logit_scale = torch.clamp(self.logit_scale.exp(), max=100.0)
+            logits = logit_scale * aligned_feature @ self.text_anchors.T
+        else:
+            print("Warning: Text anchors not set. Returning unscaled features as logits.")
+            logits = aligned_feature @ self.text_anchors.T if hasattr(self, 'text_anchors') else None
+
+        return aligned_feature, logits
+
+
+
+    # === 模型分解与恢复方法 ===
+
+    def decom_model(self, rank_rate):
+        """将 fc1 分解为低秩层"""
+        if rank_rate >= 1.0:
+            return
+        print(f"Executing Decomposition (rank_rate={rank_rate})...")
+
+        # 分解 FC1
+
+        if isinstance(self.fc1, nn.Linear):
+
+            # 调用你提供的 Decom_LINEAR
+
+            self.fc1 = Decom_LINEAR(self.fc1, rank_rate)
+            print(" -> fc1 decomposed.")
+    
+        self._rebuid_base() # 分解完成后重构基础组件
+        self.rank_rate = rank_rate
+
+
+
+    def _rebuid_base(self):
+
+        """重建基础层的 Sequential 模块 (在分解或恢复后调用)"""
+        self.base = nn.Sequential(
+            self.conv1, self.relu, self.pool,
+            self.conv2, self.relu, self.pool,
+            self.conv3, self.relu, self.pool,
+            self.conv4, self.relu,
+            self.flatten,
+            self.fc1,
+            self.relu
+
+        )
+
+    def recover_model(self):
+        """将 fc1 恢复为完整层"""
+        if self.rank_rate >= 1.0:
+            return
+
+        print("Executing Recovery to Full Rank...")
+
+       # 恢复 FC1
+        if isinstance(self.fc1, FactorizedLinear):
+            # 调用你提供的 Recover_LINEAR
+            self.fc1 = Recover_LINEAR(self.fc1)
+            print(" -> fc1 recovered.")
+        
+        self._rebuid_base()
+        self.rank_rate = 1.0
+
+    # === 正则化 Loss 计算 (用于低秩训练阶段) ===
+   
+    def L2_decay(self, type='frobenius'):
+
+        """计算分解层的正则化损失"""
+        loss = torch.tensor(0.0, device=self.conv1.weight.device)
+       
+        if self.rank_rate >= 1.0:
+
+            return loss
+
+        # 获取 FC1 的 loss
+
+        if isinstance(self.fc1, FactorizedLinear):
+            if type == 'frobenius': loss += self.fc1.frobenius_loss()
+            elif type == 'kronecker': loss += self.fc1.kronecker_loss()
+            elif type == 'l2': loss += self.fc1.L2_loss()
+
+           
+        return loss
+
+class Scaler(nn.Module):
+    def __init__(self, rate):
+        super(Scaler, self).__init__()
+        self.rate = rate
+
+    def forward(self, x):
+        return x / self.rate if self.training else x
+    
+class HeteroCNNCifar(nn.Module):
+    def __init__(
+        self,
+        dataset,
+        width_mult=1.0,
+        w_conv_bias=True,
+        w_fc_bias=True,
+        use_scaler=True,):
+        super(HeteroCNNCifar, self).__init__()
+        self.num_classes = _decide_num_classes(dataset)
+
+        c1 = max(1, int(32 * width_mult))
+        c2 = max(1, int(64 * width_mult))
+        c3 = max(1, int(128 * width_mult))
+        c4 = max(1, int(256 * width_mult))
+        h1 = max(1, int(512 * width_mult))
+
+        self.conv1 = nn.Conv2d(3, c1, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.conv2 = nn.Conv2d(c1, c2, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.conv3 = nn.Conv2d(c2, c3, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.conv4 = nn.Conv2d(c3, c4, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.fc1 = nn.Linear(c4 * 4 * 4, h1, bias=w_fc_bias)
+        self.classifier = nn.Linear(h1, self.num_classes, bias=w_fc_bias)
+        self.scaler = Scaler(width_mult) if use_scaler else nn.Identity()
+
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.scaler(self.conv1(x))))
+        x = self.pool(F.relu(self.scaler(self.conv2(x))))
+        x = self.pool(F.relu(self.scaler(self.conv3(x))))
+        x = F.relu(self.scaler(self.conv4(x)))
+        x = x.view(x.size(0), -1)
+        feat = F.relu(self.scaler(self.fc1(x)))
+        logits = self.classifier(feat)
+        return feat, logits
 
 def simple_cnn(conf):
     dataset = conf.data
@@ -367,14 +1028,34 @@ def simple_cnn(conf):
     # rank_rate = 0.5
 
     if "cifar" in dataset or dataset == "svhn":
+        if conf.method in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord"]:
+            return HeteroCNNCifar(
+                dataset,
+                width_mult=getattr(conf, "model_rate", 1.0),
+                w_conv_bias=conf.w_conv_bias,
+                w_fc_bias=conf.w_fc_bias,
+                use_scaler=getattr(conf, "heterofl_use_scaler", True),
+            )
         if conf.meta: # 如果分解
-            return MetaCNN(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias, rank_rate =rank_rate )
+            return MetaCNN3(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias, rank_rate =rank_rate )
         # return CNNCifar(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
-        return CNNCifar5Layer(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
+        return CNNCifar5Layer3(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
 
     elif "mnist" == dataset:
         return CNNMnist(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
+    elif "tiny" in dataset:
+        if conf.meta:
+            return MetaCNN3_tiny(
+                dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias,rank_rate= rank_rate
+                )
+        return CNNTiny(
+            dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias
+        )
     elif "femnist" == dataset:
+        if conf.meta:
+            return MetaCNNFemnist(
+                dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias,rank_rate= rank_rate
+                )
         return CNNfemnist(
             dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias
         )

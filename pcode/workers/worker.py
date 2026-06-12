@@ -18,6 +18,10 @@ from pcode.utils.timer import Timer
 from pcode.utils.stat_tracker import RuntimeTracker
 import  time
 import copy
+try:
+    import clip
+except ImportError:
+    print("Warning: CLIP not installed. Please install via 'pip install git+https://github.com/openai/CLIP.git'")
 
 
 class Worker(object):
@@ -54,10 +58,10 @@ class Worker(object):
         # define the criterion.
         self.criterion = nn.CrossEntropyLoss(reduction="mean")
 
+
         conf.logger.log(
             f"Worker-{conf.graph.worker_id} initialized dataset/criterion.\n"
         )   # 打印当前的进程编号
-
     def recv_extra_info_from_master(self):
         pass
 
@@ -95,23 +99,60 @@ class Worker(object):
                 return
     def extra_init(self):
         pass
+      
 
     def listen_to_master(self):
-        # listen to master, related to the function `_activate_selected_clients` in `master.py`.
-        msg = torch.zeros((3, self.conf.n_participated))
+        # # listen to master, related to the function `_activate_selected_clients` in `master.py`.
+        # msg = torch.zeros((3, self.conf.n_participated))
+        # dist.broadcast(tensor=msg, src=0)
+
+        # self.conf.graph.client_id, self.conf.graph.comm_round, self.n_local_epochs = (
+        #     msg[:3, self.conf.graph.rank - 1].to(int).cpu().numpy().tolist()
+        # ) # 取出属于自己的消息
+
+        # # once we receive the signal, we init for the local training.
+        # self.arch, self.model = create_model.define_model(
+        #     self.conf, to_consistent_model=False, client_id=self.conf.graph.client_id
+        # ) # 获取模型
+
+        # self.model_state_dict = self.model.state_dict()
+        # self.model_tb = TensorBuffer(list(self.model_state_dict.values())) # 将参数打包为一维参数，方便传输
+
+        # self.extra_init()
+
+        # self.metrics = create_metrics.Metrics(self.model, task="classification")
+        # dist.barrier()
+
+        # self.train_loader, _ = create_dataset.define_data_loader(
+        #     self.conf,
+        #     dataset=self.dataset["train"],
+        #     # localdata_id start from 0 to the # of clients - 1.
+        #     # client_id starts from 1 to the # of clients.
+        #     localdata_id=self.conf.graph.client_id - 1,
+        #     is_train=True,
+        #     data_partitioner=self.data_partitioner,
+        # )   # 这里的data_partitioner已经统一,这里传入的参时真正的客户端id
+
+        # [优化点 1]：必须将接收握手信号的 Tensor 直接分配在 GPU 上，满足 nccl 强制要求
+        msg = torch.zeros((3, self.conf.n_participated), device=self.device)
         dist.broadcast(tensor=msg, src=0)
 
         self.conf.graph.client_id, self.conf.graph.comm_round, self.n_local_epochs = (
             msg[:3, self.conf.graph.rank - 1].to(int).cpu().numpy().tolist()
-        ) # 取出属于自己的消息
+        ) 
 
         # once we receive the signal, we init for the local training.
         self.arch, self.model = create_model.define_model(
             self.conf, to_consistent_model=False, client_id=self.conf.graph.client_id
-        ) # 获取模型
+        ) 
+
+        # [优化点 2]：在打包 TensorBuffer 之前，立刻把模型推到 GPU 上！
+        # 这样 self.model_tb 的 buffer 会直接映射在显存上，后续 unpack 完全不需要 CPU
+        if self.conf.graph.on_cuda:
+            self.model = self.model.to(self.device)
 
         self.model_state_dict = self.model.state_dict()
-        self.model_tb = TensorBuffer(list(self.model_state_dict.values())) # 将参数打包为一维参数，方便传输
+        self.model_tb = TensorBuffer(list(self.model_state_dict.values())) 
 
         self.extra_init()
 
@@ -121,30 +162,49 @@ class Worker(object):
         self.train_loader, _ = create_dataset.define_data_loader(
             self.conf,
             dataset=self.dataset["train"],
-            # localdata_id start from 0 to the # of clients - 1.
-            # client_id starts from 1 to the # of clients.
             localdata_id=self.conf.graph.client_id - 1,
             is_train=True,
             data_partitioner=self.data_partitioner,
-        )   # 这里的data_partitioner已经统一,这里传入的参时真正的客户端id
-
-    def _recv_model_from_master(self):
-        # related to the function `_send_model_to_selected_clients` in `master.py`
-        old_buffer = copy.deepcopy(self.model_tb.buffer)
-        dist.recv(self.model_tb.buffer, src=0)
-        new_buffer = copy.deepcopy(self.model_tb.buffer)
-        self.model_tb.unpack(self.model_state_dict.values()) # 将接受的参数填入模型字典
-
-        # if not self.conf.freeze_bn:
-        self.model.load_state_dict(self.model_state_dict)   # 更新模型参数
-        random_reinit.random_reinit_model(self.conf, self.model)    # 若为true，这里可能会随机丢弃参数
-        self.init_model = self._turn_off_grad(copy.deepcopy(self.model).to(self.device)) # 获得一个关闭了梯度的一摸一样的模型，常用于蒸馏
-
-        # self.aggregation = Aggregation(self.model.classifier.in_features).cuda()
-        self.conf.logger.log(
-            f"Worker-{self.conf.graph.worker_id} (client-{self.conf.graph.client_id}) received the model ({self.arch}) from Master. The model status {'is updated' if old_buffer.norm() != new_buffer.norm() else 'is not updated'}."
         )
 
+    def _recv_model_from_master(self):
+        # # related to the function `_send_model_to_selected_clients` in `master.py`
+        # old_buffer = copy.deepcopy(self.model_tb.buffer)
+        # dist.recv(self.model_tb.buffer, src=0)
+        # new_buffer = copy.deepcopy(self.model_tb.buffer)
+        # self.model_tb.unpack(self.model_state_dict.values()) # 将接受的参数填入模型字典
+
+        # # if not self.conf.freeze_bn:
+        # self.model.load_state_dict(self.model_state_dict,strict=False)   # 更新模型参数 strict=False 以容忍 adapter 参数缺失
+        # random_reinit.random_reinit_model(self.conf, self.model)    # 若为true，这里可能会随机丢弃参数
+        # self.init_model = self._turn_off_grad(copy.deepcopy(self.model).to(self.device)) # 获得一个关闭了梯度的一摸一样的模型，常用于蒸馏
+
+        # # self.aggregation = Aggregation(self.model.classifier.in_features).cuda()
+        # self.conf.logger.log(
+        #     f"Worker-{self.conf.graph.worker_id} (client-{self.conf.graph.client_id}) received the model ({self.arch}) from Master. The model status {'is updated' if old_buffer.norm() != new_buffer.norm() else 'is not updated'}."
+        # )
+
+        # dist.barrier()
+
+        old_buffer_norm = self.model_tb.buffer.norm().item()
+        
+        # 【修改点】：新建一个 CPU buffer 用来给 gloo 接收数据
+        recv_buffer = torch.zeros_like(self.model_tb.buffer, device='cpu')
+        dist.recv(recv_buffer, src=0)
+        
+        # 接收完毕后，把数据拷贝回 GPU 的模型 buffer 中
+        self.model_tb.buffer.copy_(recv_buffer.to(self.device))
+        
+        new_buffer_norm = self.model_tb.buffer.norm().item()
+        self.model_tb.unpack(self.model_state_dict.values()) 
+
+        self.model.load_state_dict(self.model_state_dict, strict=False) 
+        random_reinit.random_reinit_model(self.conf, self.model)
+        self.init_model = self._turn_off_grad(copy.deepcopy(self.model).to(self.device)) 
+
+        self.conf.logger.log(
+            f"Worker-{self.conf.graph.worker_id} received model. Status {'is updated' if old_buffer_norm != new_buffer_norm else 'is not updated'}."
+        )
         dist.barrier()
 
     def _prepare_train(self):
@@ -154,6 +214,7 @@ class Worker(object):
         if self.conf.graph.on_cuda:
             self.model = self.model.to(self.device)
 
+# 把 clip_adapter 挂在 self.model 下，create_optimizer 会自动识别到它的参数
         self.optimizer = create_optimizer.define_optimizer(
             self.conf, model=self.model, optimizer_name=self.conf.optimizer
         )   # 建立优化器，同时加入L2正则
@@ -172,6 +233,7 @@ class Worker(object):
     def prepare_train(self):
         self._prepare_train()
 
+    # 添加正则项 和使用原型的mse损失    
     def local_training_with_extra_calculate(self, loss, output, data_batch, feature):
         if hasattr(self.model, "get_decomposed_loss"):
             # 2. 计算正则损失
@@ -184,6 +246,9 @@ class Worker(object):
             
             # 4. 将正则项加到总 Loss 中
             loss += self.conf.meta_L2 * decom_reg
+
+        # --- CLIP Prototype Alignment Loss ---
+        
 
         return loss 
 
@@ -314,7 +379,17 @@ class Worker(object):
         self.conf.logger.log(
             f"Worker-{self.conf.graph.worker_id} (client-{self.conf.graph.client_id}) sending the model ({self.arch}) back to Master."
         )
-        flatten_model = TensorBuffer(list(self.model.state_dict().values()))    # 打包数据
+
+        # [MODIFIED] 打包时移除 clip_adapter 参数，避免上传
+        # 因为我们是把 clip_adapter 挂在 model 下的，state_dict 会包含它
+        # 必须过滤掉
+        state_dict = self.model.state_dict()
+        to_send_dict = {k: v for k, v in state_dict.items() if 'clip_adapter' not in k}
+
+        flatten_model = TensorBuffer(list(to_send_dict.values()))    # 打包数据
+
+        # # [优化点 4]：发送前必须确保 buffer 在 GPU 上，否则 nccl 会崩溃或隐式调用 CPU
+        # flatten_model.buffer = flatten_model.buffer.to(self.device)
         dist.send(tensor=flatten_model.buffer, dst=0)   # 发送
         dist.barrier()      # 等待其他客户端
 

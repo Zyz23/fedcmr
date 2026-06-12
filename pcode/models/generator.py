@@ -239,10 +239,12 @@ CONFIGS_ = {
 # temporary roundabout to evaluate sensitivity of the generator
 GENERATORCONFIGS = {
     # hidden_dimension, latent_dimension, input_channel, n_class, noise_dim
-    'cifar10': (512, 64, 3, 10, 64),
-    'cifar100': (512, 64, 3, 100, 64),
+    # 'cifar10': (512, 64, 3, 10, 64),
+    'cifar10': (512, 512, 3, 10, 64),
+    'cifar100': (512, 512, 3, 100, 64),
     "sst": (768, 768, 768, 5, 768),
     "ag_news": (768, 768, 768, 4, 768),
+    "imagenet_tiny": (512, 512 , 3, 200, 64),
     "imagenet32": (512, 256 , 3, 1000, 256),
     "tiny-imagenet": (2048, 2048 , 3, 200, 2048),
     'celeb': (128, 32, 3, 2, 32),
@@ -269,6 +271,20 @@ RUNCONFIGS = {
             'ensemble_alpha': 1,  # teacher loss (server side)
             'ensemble_beta': 0,  # adversarial student loss
             'ensemble_eta': 1,  # diversity loss
+            'weight_decay': 1e-2,
+            'num_pretrain_iters': 20,
+        },
+        'imagenet_tiny':  # <--- 名字必须和脚本里一模一样！
+        {
+            'unique_labels': 200,   # Tiny-ImageNet 有 200 类
+            'generative_alpha': 1,  # 建议先用 1 试试，0.1 可能太小
+            'generative_beta': 1,
+            'ensemble_lr': 1e-4,
+            'ensemble_batch_size': 128,
+            'ensemble_epochs': 50,
+            'ensemble_alpha': 1,  
+            'ensemble_beta': 0,  
+            'ensemble_eta': 1,  
             'weight_decay': 1e-2,
             'num_pretrain_iters': 20,
         },

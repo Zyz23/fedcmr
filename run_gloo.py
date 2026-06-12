@@ -1,3 +1,24 @@
+
+
+import os  # 必须先加这一行导入 os 模块
+CPU_THREADS = int(os.environ.get("CPU_THREADS", "2"))
+
+os.environ["OMP_NUM_THREADS"] = str(CPU_THREADS)
+os.environ["MKL_NUM_THREADS"] = str(CPU_THREADS)
+os.environ["OPENBLAS_NUM_THREADS"] = str(CPU_THREADS)
+os.environ["NUMEXPR_NUM_THREADS"] = str(CPU_THREADS)
+
+import torch
+
+torch.set_num_threads(CPU_THREADS)
+
+try:
+    torch.set_num_interop_threads(1)
+except RuntimeError:
+    pass
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # 然后再设置环境变量 2,3,4,5
+
 import torch.multiprocessing as mp
 # -*- coding: utf-8 -*-
 from parameters import get_args
@@ -8,9 +29,11 @@ import pcode.utils.checkpoint as checkpoint
 import pcode.utils.logging as logging
 import pcode.utils.param_parser as param_parser
 import random
+import numpy as np
 
 MethodTable = {
     "fedavg": [Master, Worker],
+    # "fedavg": [Master, Worker_a],
     "fedgen": [MasterFedgen, WorkerFedGen],
     "feddistill": [MasterFedDistill, WorkerFedDistill],
     "moon": [MasterMoon, WorkerMoon],
@@ -20,8 +43,18 @@ MethodTable = {
     "fedadam":[MasterFedAdam, Worker],
     "fedadam_gkd":[MasterFedAdam, WorkerFedGKD],
     "fedensemble":[MasterFedEnsemble, Worker],
-    # "fedhm":[MasterFedHM, WorkerFedHM]
-    "fedhm":[MasterFedHM, Worker]
+    "fedhm":[MasterFedHM, WorkerFedHM],
+    "heterofl":[MasterHeteroFL, Worker],
+    "fedrolex":[MasterFedRolex, Worker],
+    "feddropout":[MasterFedDropout, Worker],
+    "feddf":[MasterFedDF, Worker],
+    "fedour":[MasterFedOur, WorkerFedOur],
+    "fedmd":[MasterFedMD, Worker],
+    "fjord":[MasterFjORD, WorkerFjORD],
+    "fiarse":[MasterFIARSE, WorkerFIARSE],
+    "fedsam":[MasterFedSam, WorkerFedSam],
+    
+    # "fedhm":[MasterFedHM, Worker_a]
 
 }
 # 随机生成秩
@@ -32,13 +65,28 @@ def random_rank_creater(count: int):
     candidate_values = np.array([0.25])
     # 从候选值中随机选择count个（可重复选择，replace=True为默认值）
     return np.random.choice(candidate_values, size=count)
+
+def hetero_model_rate_creator(conf, rates_text=None):
+    rates_text = conf.hetero_model_rates if rates_text is None else rates_text
+    candidates = np.array(
+        [float(rate.strip()) for rate in rates_text.split(",") if rate.strip()]
+    )
+    if len(candidates) == 0:
+        raise ValueError("model/capacity rates must contain at least one float value.")
+    if np.any(candidates <= 0) or np.any(candidates > 1):
+        raise ValueError("model/capacity rates must be in the interval (0, 1].")
+    if conf.hetero_rate_assignment == "random":
+        rng = np.random.RandomState(conf.manual_seed)
+        return rng.choice(candidates, size=conf.n_clients, replace=True)
+    return np.array([candidates[idx % len(candidates)] for idx in range(conf.n_clients)])
     
 def main(rank, size, conf, port): # rank为进程序号
     # init the distributed world.
     try:
         os.environ['MASTER_ADDR'] = '127.0.0.1'
         os.environ['MASTER_PORT'] = port
-        dist.init_process_group("gloo", rank=rank, world_size=size) # 所有进程走到此步成功链接 程序继续执行
+        dist.init_process_group("gloo", rank=rank, world_size=size)
+        # dist.init_process_group("gloo", rank=rank, world_size=size) # 所有进程走到此步成功链接 程序继续执行
     except AttributeError as e:
         print(f"failed to init the distributed world: {e}.")
         conf.distributed = False
@@ -125,7 +173,22 @@ if __name__ == "__main__":
     processes = []
 
     clients_nums = conf.n_clients
-    conf.rank_list = random_rank_creater(clients_nums)  #所有客户端的秩 分解使用
+    
+    if conf.method in ["heterofl", "fedrolex", "feddropout", "feddf", "fedmd", "fjord", "fiarse"]:
+        rates_text = (
+            conf.fiarse_capacity_rates
+            if conf.method == "fiarse" and conf.fiarse_capacity_rates is not None
+            else conf.hetero_model_rates
+        )
+        conf.model_rate_list = hetero_model_rate_creator(conf, rates_text=rates_text)
+        conf.model_rate = 1.0
+    if conf.is_random_rank and conf.method not in ["heterofl", "fedrolex", "feddropout", "feddf", "fedmd", "fjord", "fiarse"]:
+        conf.rank_list = random_rank_creater(clients_nums)
+    # if conf.is_random_rank:
+    #     conf.rank_list = random_rank_creater(clients_nums)  #所有客户端的秩 分解使用
+       
+
+    
 
     mp.set_start_method("spawn") #创建子进程
 

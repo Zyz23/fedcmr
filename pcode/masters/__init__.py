@@ -7,4 +7,13 @@ from .master_feddistill import *
 from .master_feddyn import *
 from .master_fedadam import *
 from .master_fedensemble import *
+from .master_fedour import *
 from .master_fedhm import *
+from .master_heterofl import *
+from .master_fedrolex import *
+from .master_feddf import *
+from .master_feddropout import *
+from .master_fedmd import *
+from .master_fjord import *
+from .master_fiarse import *
+from .master_fedsam import *

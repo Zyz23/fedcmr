@@ -12,13 +12,32 @@ def define_model(
     client_id=None,
     arch=None,
 ):
-    if conf.is_random_rank: # 传递的client_id 对应真实的id 也就是数组下标-1 
-        conf.ratio_LR = conf.rank_list[client_id-1] # 获取对应的低秩率 加入到配置中
+    old_model_rate = getattr(conf, "model_rate", None)
+    if getattr(conf, "method", None) in ["heterofl" , "fedrolex","feddropout", "feddf", "fedmd", "fjord"]:
+        if client_id is None or int(client_id) <= 0:
+            conf.model_rate = 1.0
+        else:
+            conf.model_rate = float(conf.model_rate_list[int(client_id) - 1])
+
+    # if conf.is_random_rank: # 传递的client_id 对应真实的id 也就是数组下标-1 
+    #     conf.ratio_LR = conf.rank_list[client_id-1] # 获取对应的低秩率 加入到配置中
+    if conf.is_random_rank and getattr(conf, "method", None) not in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord"]:
+        if client_id is None:
+            conf.ratio_LR = 1
+        else:
+            conf.ratio_LR = conf.rank_list[int(client_id) - 1]
     
 
     arch, model = define_cv_classification_model(
         conf, client_id, use_complex_arch, arch
     ) # 获取模型
+
+    if getattr(conf, "method", None) in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord"]:
+        if old_model_rate is None:
+            if hasattr(conf, "model_rate"):
+                delattr(conf, "model_rate")
+        else:
+            conf.model_rate = old_model_rate
 
     # consistent the model.
     if to_consistent_model:

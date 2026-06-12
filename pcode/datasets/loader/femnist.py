@@ -16,6 +16,10 @@ import torch.utils.data as data
 import torchvision
 import torchvision.datasets.utils as data_utils
 
+# --- 修复高版本 torchvision 兼容性问题 ---
+if not hasattr(data_utils, 'makedir_exist_ok'):
+    data_utils.makedir_exist_ok = lambda dir_path: os.makedirs(dir_path, exist_ok=True)
+# ----------------------------------------
 
 def define_femnist_folder(root, is_train, transform, target_transform, download):
     return FEMNIST(
@@ -279,7 +283,8 @@ class FEMNIST(data.Dataset):
                 for (f, c) in l:
                     img = Image.open(f)
                     gray = img.convert("L")
-                    gray.thumbnail(size, Image.ANTIALIAS)
+                    # gray.thumbnail(size, Image.ANTIALIAS)
+                    gray.thumbnail(size, getattr(Image, 'Resampling', Image).LANCZOS)
                     arr = np.asarray(gray).copy()
                     vec = arr.flatten()
                     vec = vec / 255  # scale all pixel values to between 0 and 1

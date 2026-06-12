@@ -229,25 +229,25 @@ def _get_imagenet(conf, name, datasets_path, split):
     is_train = split == "train"
     is_downsampled = "8" in name or "16" in name or "32" in name or "64" in name
     downsampled_img_scale = int(name[8:]) if is_downsampled else None
-    if "tiny" in name:
-        is_downsampled = True
-        downsampled_img_scale = 64
-    # root = os.path.join(
-    #     datasets_path, "lmdb" if not is_downsampled else "downsampled_lmdb"
-    # )
-    root = os.path.join(datasets_path,name)
-    # get transform for is_downsampled=True.
-    if is_downsampled:
+    
+    # [修改 1] 独立识别 tiny 数据集
+    is_tiny = "tiny" in name
+    
+    # get transform for is_downsampled=True or is_tiny=True
+    if is_downsampled or is_tiny:
         normalize = (
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
             if conf.pn_normalize
             else None
         )
+        
+        # 确定裁剪尺寸
+        crop_size = 64 if is_tiny else downsampled_img_scale
 
         if is_train:
             transform = transforms.Compose(
                 [
-                    transforms.RandomCrop(downsampled_img_scale, padding=4),
+                    transforms.RandomCrop(crop_size, padding=4),
                     transforms.RandomHorizontalFlip(),
                     transforms.ToTensor(),
                 ]
@@ -260,16 +260,10 @@ def _get_imagenet(conf, name, datasets_path, split):
     else:
         transform = None
 
+    root = os.path.join(datasets_path, name)
     root = os.path.join(root, "train" if is_train else "val")
+    
     if conf.use_lmdb_data:
-        # if is_train:
-        #     root = os.path.join(
-        #         root, "train.lmdb"
-        #     )
-        # else:
-        #     root = os.path.join(
-        #         root, "val.lmdb"
-        #     )
         return imagenet_folder.define_imagenet_folder(
             conf=conf,
             name=name,
@@ -280,10 +274,77 @@ def _get_imagenet(conf, name, datasets_path, split):
             is_image=True and not is_downsampled,
         )
     else:
-        #root = os.path.join(root, "train" if is_train else "val")
-        return imagenet_folder.ImageNetDS(
-            root=root, img_size=int(name[8:]), train=is_train, transform=transform
-        )
+        # [修改 2] 核心分流逻辑：
+        if is_tiny:
+            # Tiny-ImageNet 是标准的文件夹图片结构，直接使用 torchvision 的 ImageFolder
+            return torchvision.datasets.ImageFolder(root=root, transform=transform)
+        elif is_downsampled:
+            # 打包好的 ImageNet32/64 等二进制 batch 文件使用自定义的 ImageNetDS
+            return imagenet_folder.ImageNetDS(
+                root=root, img_size=downsampled_img_scale, train=is_train, transform=transform
+            )
+        else:
+            # 标准全尺寸 ImageNet
+            return torchvision.datasets.ImageFolder(root=root, transform=transform)
+    # is_train = split == "train"
+    # is_downsampled = "8" in name or "16" in name or "32" in name or "64" in name
+    # downsampled_img_scale = int(name[8:]) if is_downsampled else None
+    # if "tiny" in name:
+    #     is_downsampled = True
+    #     downsampled_img_scale = 64
+    # # root = os.path.join(
+    # #     datasets_path, "lmdb" if not is_downsampled else "downsampled_lmdb"
+    # # )
+    # root = os.path.join(datasets_path,name)
+    # # get transform for is_downsampled=True.
+    # if is_downsampled:
+    #     normalize = (
+    #         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    #         if conf.pn_normalize
+    #         else None
+    #     )
+
+    #     if is_train:
+    #         transform = transforms.Compose(
+    #             [
+    #                 transforms.RandomCrop(downsampled_img_scale, padding=4),
+    #                 transforms.RandomHorizontalFlip(),
+    #                 transforms.ToTensor(),
+    #             ]
+    #             + ([normalize] if normalize is not None else [])
+    #         )
+    #     else:
+    #         transform = transforms.Compose(
+    #             [transforms.ToTensor()] + ([normalize] if normalize is not None else [])
+    #         )
+    # else:
+    #     transform = None
+
+    # root = os.path.join(root, "train" if is_train else "val")
+    # if conf.use_lmdb_data:
+    #     # if is_train:
+    #     #     root = os.path.join(
+    #     #         root, "train.lmdb"
+    #     #     )
+    #     # else:
+    #     #     root = os.path.join(
+    #     #         root, "val.lmdb"
+    #     #     )
+    #     return imagenet_folder.define_imagenet_folder(
+    #         conf=conf,
+    #         name=name,
+    #         root=root,
+    #         flag=False,
+    #         cuda=conf.graph.on_cuda,
+    #         transform=transform,
+    #         is_image=True and not is_downsampled,
+    #     )
+    # else:
+    #     #root = os.path.join(root, "train" if is_train else "val")
+    #     return imagenet_folder.ImageNetDS(
+    #         # root=root, img_size=int(name[8:]), train=is_train, transform=transform
+    #         root=root, img_size=downsampled_img_scale, train=is_train, transform=transform
+    #     )
 
 
 def _get_pseudo_imagenet(conf, root, split="train"):

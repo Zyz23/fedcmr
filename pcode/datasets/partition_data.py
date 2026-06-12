@@ -158,6 +158,51 @@ class DataPartitioner(object):
         self.targets_of_partitions = record_class_distribution(
             self.partitions, self.data.targets, print_fn=self.conf.logger.log,rank=self.conf.graph.rank
         )
+
+        # ... 前面的代码 (在生成 targets_of_partitions 之后) ...
+        # if self.conf.graph.rank == 0:  
+        #     try:
+        #         import matplotlib.pyplot as plt
+        #         import sys
+                
+        #         x = [] # X轴: 客户端 ID
+        #         y = [] # Y轴: 类别标签
+        #         s = [] # 大小: 样本数量
+                
+        #         for client_id, class_counts in self.targets_of_partitions.items():
+        #             for class_id, count in class_counts:
+        #                 x.append(client_id)
+        #                 y.append(class_id)
+        #                 # 为了让气泡更明显，可以乘以一个视觉放大系数，比如乘以 1.5 或 2
+        #                 s.append(count * 1.5) 
+                        
+        #         plt.figure(figsize=(12, 8))
+                
+        #         # 画散点图：
+        #         # color='steelblue' 设置为单一的钢蓝色 (或者换成 'cornflowerblue', '#1f77b4' 等)
+        #         plt.scatter(x, y, s=s, color='steelblue', alpha=0.7, edgecolors='white', linewidth=0.5)
+                
+        #         # 设置标题和轴标签
+        #         plt.title("Data Distribution across Clients (Non-IID)", fontsize=16)
+        #         plt.xlabel("Client ID", fontsize=14)
+        #         plt.ylabel("Data Classes", fontsize=14)
+                
+        #         # 设置 X 轴为客户端 ID 列表，Y 轴为类别的间隔刻度
+        #         plt.xticks(list(self.targets_of_partitions.keys()))
+        #         plt.yticks(range(0, self.conf.num_classes, max(1, self.conf.num_classes // 20)))
+                
+        #         # 添加网格线，增加专业感
+        #         plt.grid(True, linestyle='--', alpha=0.5)
+                
+        #         # 自动调整布局并保存
+        #         plt.tight_layout()
+        #         pic_name = f"distribution_{self.conf.partition_data}_alpha{self.conf.non_iid_alpha}.png"
+        #         plt.savefig(pic_name, dpi=300)
+        #         print(f"\n✅ 图片 {pic_name} 保存成功！程序终止。")
+                
+        #         # 画完图直接强制停止，不用等后续训练
+        #     except Exception as e:
+        #         print(f"绘图失败: {e}")
         # if len(self.partitions) == 20:
         #     for idx in range(20):
         #         client_data = self.use(idx)
@@ -168,8 +213,8 @@ class DataPartitioner(object):
         #                         pin_memory=False,
         #                         drop_last=False
         #                     )
-        #
-        #
+        
+        
         #         for input,target in data_loader:
         #             torch.save(input,str(idx)+'_input.pt')
         #             torch.save(target,str(idx)+'_target.pt')
@@ -198,6 +243,47 @@ class DataPartitioner(object):
                     key=lambda x: x[1],
                 )
             ]
+        # 病理划分    
+        elif self.partition_type == "pathological":
+            # ==========================================
+            # 新增：标准的病理分布 (Pathological/Shard-based Non-IID)
+            # ==========================================
+            # 你可以把这个参数放到 parameters.py 里，例如 self.conf.classes_per_client
+            # 默认经典的病理分布是每个 Client 分配 2 个类
+            num_classes_per_client = getattr(self.conf, 'classes_per_client', 2) 
+            n_workers = len(self.partition_sizes)
+            
+            # 计算总共需要划分多少个数据碎片 (shards)
+            total_shards = n_workers * num_classes_per_client
+            
+            # 1. 把所有数据的索引按 Label 从小到大排序
+            idxs_labels = [(idx, target) for idx, target in enumerate(self.data.targets) if idx in indices]
+            idxs_labels.sort(key=lambda x: x[1])
+            sorted_indices = [idx for idx, _ in idxs_labels]
+            
+            # 2. 将排好序的数据均分为 total_shards 个碎片
+            shard_size = len(sorted_indices) // total_shards
+            shards = [sorted_indices[i * shard_size : (i + 1) * shard_size] for i in range(total_shards)]
+            
+            # 3. 随机打乱这些碎片（这就是为什么客户端拿到的类别是随机的组合）
+            random_state.shuffle(shards)
+            
+            # 4. 给每个客户端分配 num_classes_per_client 个碎片
+            client_indices_list = []
+            for i in range(n_workers):
+                # 获取该客户端分配到的所有碎片
+                client_shards = shards[i * num_classes_per_client : (i + 1) * num_classes_per_client]
+                # 把该客户端的碎片数据合并
+                client_indices = functools.reduce(lambda a, b: a + b, client_shards)
+                
+                # 关键：必须打乱客户端内部的数据顺序！
+                # 否则模型在本地训练时，会先学完类A再学类B，引发灾难性遗忘
+                random_state.shuffle(client_indices) 
+                
+                client_indices_list.append(client_indices)
+            
+            # 把所有客户端的索引首尾相连展平，外部循环会根据 partition_sizes 准确地截断分配
+            indices = functools.reduce(lambda a, b: a + b, client_indices_list)
         elif self.partition_type == "non_iid_dirichlet":
             num_classes = len(np.unique(self.data.targets))
             num_indices = len(indices)

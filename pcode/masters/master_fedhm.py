@@ -57,7 +57,8 @@ class MasterFedHM(object):
 # 创建服务器模型 选取第一个客户端的全秩模型作为基准
         first_model_name, first_model_instance = self.client_models[1]
         self.master_model = copy.deepcopy(first_model_instance)
-        self.master_model.recover_model()
+        print()
+        self.master_model.recover_model() # 初始模型都是分解的 先恢复全职模型
 
 
         # 确定每一个客户的具体使用的什么模型 只有名称 没有返回模型参数
@@ -553,3 +554,5 @@ def get_n_local_epoch(conf, n_participated):
             low=conf.min_local_epochs, high=conf.local_n_epochs, size=n_participated
         )
         return random_local_n_epochs
+
+
