@@ -12,3 +12,5 @@ from .worker_fedhm import *
 from .worker_fjord import *
 from .worker_fiarse import *
 from .worker_fedsam import *
+from .worker_fedswa import *
+from .worker_feddse import *

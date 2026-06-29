@@ -18,7 +18,9 @@ MethodTable = {
     "feddyn":[MasterFedDyn, WorkerFedDyn],
     "fedadam":[MasterFedAdam, Worker],
     "fedadam_gkd":[MasterFedAdam, WorkerFedGKD],
-    "fedensemble":[MasterFedEnsemble, Worker]
+    "fedensemble":[MasterFedEnsemble, Worker],
+    "fedswa":[MasterFedSWA, WorkerFedSWA],
+    "fedmoswa":[MasterFedMoSWA, WorkerFedMoSWA],
 }
 
 def main(conf):

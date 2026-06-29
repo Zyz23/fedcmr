@@ -16,6 +16,8 @@ def _decide_num_classes(dataset):
         return 10
     elif dataset == "cifar100":
         return 100
+    elif "tiny" in dataset:
+        return 200
     elif "imagenet" in dataset:
         return 1000
     elif "mnist" == dataset:
@@ -1021,6 +1023,44 @@ class HeteroCNNCifar(nn.Module):
         logits = self.classifier(feat)
         return feat, logits
 
+class HeteroCNNtiny(nn.Module):
+    def __init__(
+        self,
+        dataset,
+        width_mult=1.0,
+        w_conv_bias=True,
+        w_fc_bias=True,
+        use_scaler=True,):
+        super(HeteroCNNtiny, self).__init__()
+        self.num_classes = _decide_num_classes(dataset)
+
+        c1 = max(1, int(32 * width_mult))
+        c2 = max(1, int(64 * width_mult))
+        c3 = max(1, int(128 * width_mult))
+        c4 = max(1, int(256 * width_mult))
+        h1 = max(1, int(512 * width_mult))
+
+        self.conv1 = nn.Conv2d(3, c1, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.conv2 = nn.Conv2d(c1, c2, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.conv3 = nn.Conv2d(c2, c3, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.conv4 = nn.Conv2d(c3, c4, kernel_size=3, padding=1, stride=1, bias=w_conv_bias)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.fc1 = nn.Linear(c4 * 8 * 8, h1, bias=w_fc_bias)
+        self.classifier = nn.Linear(h1, self.num_classes, bias=w_fc_bias)
+        self.scaler = Scaler(width_mult) if use_scaler else nn.Identity()
+
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.scaler(self.conv1(x))))
+        x = self.pool(F.relu(self.scaler(self.conv2(x))))
+        x = self.pool(F.relu(self.scaler(self.conv3(x))))
+        x = F.relu(self.scaler(self.conv4(x)))
+        x = x.view(x.size(0), -1)
+        feat = F.relu(self.scaler(self.fc1(x)))
+        logits = self.classifier(feat)
+        return feat, logits
+
+
 def simple_cnn(conf):
     dataset = conf.data
 #     获取秩 rank_rate
@@ -1028,7 +1068,17 @@ def simple_cnn(conf):
     # rank_rate = 0.5
 
     if "cifar" in dataset or dataset == "svhn":
-        if conf.method in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord"]:
+
+        if conf.method == "fedlagc":
+            return HeteroCNNCifar(
+                dataset,
+                width_mult=1.0,
+                w_conv_bias=conf.w_conv_bias,
+                w_fc_bias=conf.w_fc_bias,
+                use_scaler=False,
+            )
+        
+        if conf.method in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord","feddse",]:
             return HeteroCNNCifar(
                 dataset,
                 width_mult=getattr(conf, "model_rate", 1.0),
@@ -1044,6 +1094,22 @@ def simple_cnn(conf):
     elif "mnist" == dataset:
         return CNNMnist(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
     elif "tiny" in dataset:
+        if conf.method == "fedlagc":
+            return HeteroCNNtiny(
+                dataset,
+                width_mult=1.0,
+                w_conv_bias=conf.w_conv_bias,
+                w_fc_bias=conf.w_fc_bias,
+                use_scaler=False,
+            )
+        if conf.method in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord","feddse",]:
+            return HeteroCNNtiny(
+                dataset,
+                width_mult=getattr(conf, "model_rate", 1.0),
+                w_conv_bias=conf.w_conv_bias,
+                w_fc_bias=conf.w_fc_bias,
+                use_scaler=getattr(conf, "heterofl_use_scaler", True),
+            )
         if conf.meta:
             return MetaCNN3_tiny(
                 dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias,rank_rate= rank_rate

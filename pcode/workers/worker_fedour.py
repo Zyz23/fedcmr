@@ -277,18 +277,35 @@ class WorkerFedOur(object):
         self.conf.graph.client_id, self.conf.graph.comm_round, self.n_local_epochs = (
             msg[:3, self.conf.graph.rank - 1].to(int).cpu().numpy().tolist()
         ) # 取出属于自己的消息
+
+        # Master 传来的 client_id 是 0-based: 0 ~ n_clients-1
+        client_id0 = int(self.conf.graph.client_id)
+
+        # create_model 里 client_id 是按 1-based 设计的，所以这里转回 1-based
+        client_id_for_model = client_id0 + 1
         
         if self.conf.rank_list is not None:
-            self.ratio_LR = self.conf.rank_list[self.conf.graph.client_id - 1]  # 取出属于自己的秩
+            # self.ratio_LR = self.conf.rank_list[self.conf.graph.client_id - 1]  # 取出属于自己的秩
+            self.ratio_LR = self.conf.rank_list[client_id0]
+            self.conf.ratio_LR = self.ratio_LR
+
 
         # once we receive the signal, we init for the local training.
         self.arch, self.model = create_model.define_model(
-            self.conf, to_consistent_model=False, client_id=self.conf.graph.client_id
+            self.conf, to_consistent_model=False, client_id=client_id_for_model
         ) # 获取模型
 
         self.model_state_dict = self.model.state_dict()
         self.model_tb = TensorBuffer(list(self.model_state_dict.values())) # 将参数打包为一维参数，方便传输
 
+        self.conf.logger.log(
+        f"[WORKER BUFFER] worker_rank={self.conf.graph.rank}, "
+        f"client_id0={client_id0}, "
+        f"client_id_for_model={client_id_for_model}, "
+        f"rank={self.ratio_LR}, "
+        f"numel={self.model_tb.buffer.numel()}, "
+        f"bytes={self.model_tb.buffer.numel() * self.model_tb.buffer.element_size()}"
+        )
         self.extra_init()
 
         self.metrics = create_metrics.Metrics(self.model, task="classification")
@@ -299,7 +316,7 @@ class WorkerFedOur(object):
             dataset=self.dataset["train"],
             # localdata_id start from 0 to the # of clients - 1.
             # client_id starts from 1 to the # of clients.
-            localdata_id=self.conf.graph.client_id - 1,
+            localdata_id=client_id0,
             is_train=True,
             data_partitioner=self.data_partitioner,
         )   # 这里的data_partitioner已经统一,这里传入的参时真正的客户端id
@@ -509,7 +526,7 @@ class WorkerFedOur(object):
             mse_loss = F.mse_loss(feature, sleleted_anchor)
             total_loss = total_loss + dynamic_weight * mse_loss #传入的基础 loss + l2_loss + MSE拉力
 
-            if current_epoch > 20:
+            if current_epoch > 10:
                 # # 计算本地特征与全局模型提取的特征的余弦相似度 (逐样本计算)
                 cosine_sim = torch.sum(feature * global_feature, dim=1)
                 # 目标是最大化相似度，所以 loss 为 (1 - similarity)
@@ -528,7 +545,7 @@ class WorkerFedOur(object):
             # [实验模块 A]: 语义感知蒸馏 (辅助勾勒特征空间)
             # ==========================================================
             # 【实验开关】：先设为 0，确认基本盘正常后，再设为 0.3 或 0.5
-            weight_idea_A = 2.0
+            weight_idea_A = 0.0
             
             if weight_idea_A > 0:
                 # tau_sem = 0.05
@@ -553,7 +570,7 @@ class WorkerFedOur(object):
             # [实验模块 B]: 特征级幻觉 Mixup (防数据缺失坍缩)
             # ==========================================================
             # 【实验开关】：必须等 Idea A 跑出效果后，再尝试设为 0.1 (千万不要太大)
-            weight_idea_B = 0.3
+            weight_idea_B = 0.0
             
             if weight_idea_B > 0:
                 batch_size = feature.size(0)

@@ -1037,6 +1037,7 @@ class MasterFedOur(object):
                 self.send_extra_info_to_selected_clients(selected_client_ids)
 
                 # broadcast the model to activated clients.
+                
                 self._send_model_to_selected_clients(selected_client_ids)
 
             else:
@@ -1326,6 +1327,13 @@ class MasterFedOur(object):
             self.conf.logger.log(
                 f"\tMaster send the current model={arch} to process_id={worker_rank}."
             )
+        self.conf.logger.log(
+        f"[MASTER SEND] worker_rank={worker_rank}, "
+        f"client_id={selected_client_id}, "
+        f"rank={self.conf.rank_list[selected_client_id]}, "
+        f"numel={flatten_model.buffer.numel()}, "
+        f"bytes={flatten_model.buffer.numel() * flatten_model.buffer.element_size()}"
+        )
 
         dist.barrier()
 

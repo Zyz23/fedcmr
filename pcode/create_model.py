@@ -13,7 +13,7 @@ def define_model(
     arch=None,
 ):
     old_model_rate = getattr(conf, "model_rate", None)
-    if getattr(conf, "method", None) in ["heterofl" , "fedrolex","feddropout", "feddf", "fedmd", "fjord"]:
+    if getattr(conf, "method", None) in ["heterofl" , "fedrolex","feddropout", "feddf", "fedmd", "fjord","feddse"]:
         if client_id is None or int(client_id) <= 0:
             conf.model_rate = 1.0
         else:
@@ -21,7 +21,7 @@ def define_model(
 
     # if conf.is_random_rank: # 传递的client_id 对应真实的id 也就是数组下标-1 
     #     conf.ratio_LR = conf.rank_list[client_id-1] # 获取对应的低秩率 加入到配置中
-    if conf.is_random_rank and getattr(conf, "method", None) not in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord"]:
+    if conf.is_random_rank and getattr(conf, "method", None) not in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord","feddse",]:
         if client_id is None:
             conf.ratio_LR = 1
         else:
@@ -32,7 +32,7 @@ def define_model(
         conf, client_id, use_complex_arch, arch
     ) # 获取模型
 
-    if getattr(conf, "method", None) in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord"]:
+    if getattr(conf, "method", None) in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord","feddse"]:
         if old_model_rate is None:
             if hasattr(conf, "model_rate"):
                 delattr(conf, "model_rate")

@@ -346,6 +346,67 @@ def get_args():
     parser.add_argument("--fedsam_dp_clip", default=1.0, type=float)
     parser.add_argument("--fedsam_dp_noise_multiplier", default=0.0, type=float)
 
+    parser.add_argument("--fedswa_use_cosine_lr", default=True, type=str2bool)
+    parser.add_argument("--fedswa_local_lr_multiplier", default=2.0, type=float)
+    parser.add_argument("--fedswa_local_lr_min_ratio", default=0.0, type=float)
+    parser.add_argument("--fedswa_weight_decay", default=1e-3, type=float)
+    parser.add_argument("--fedswa_momentum", default=0.0, type=float)
+    parser.add_argument("--fedmoswa_control_momentum", default=0.4, type=float)
+
+    parser.add_argument(
+    "--feddse_profile_batches",
+    type=int,
+    default=10,
+    help=(
+        "Number of local batches used to profile "
+        "neuron activations. 0 means all batches."
+    ),
+)
+
+    parser.add_argument(
+        "--feddse_temperature",
+        type=float,
+        default=1.0,
+        help=(
+            "Temperature for activation-based weighted "
+            "neuron sampling. Near 0 approximates Top-K."
+        ),
+    )
+
+    parser.add_argument(
+        "--fedlagc_capacity_rates",
+        type=str,
+        default="0.25,0.5,0.75,1.0",
+    )
+
+    parser.add_argument(
+        "--fedlagc_beta",
+        type=float,
+        default=0.1,
+    )
+
+    parser.add_argument(
+        "--fedlagc_correction_fraction",
+        type=float,
+        default=0.25,
+    )
+
+    parser.add_argument(
+        "--fedlagc_state_dir",
+        type=str,
+        default="",
+)
+    parser.add_argument(
+    "--fedlagc_mask_refresh_interval",
+    type=int,
+    default=1,
+)
+
+    parser.add_argument(
+        "--fedlagc_grad_clip",
+        type=float,
+        default=0.0,
+    )   
 
     # dataset.
     # 数据集默认是cifar10
@@ -402,7 +463,7 @@ def get_args():
     parser.add_argument("--w_fc_bias", default=True, type=str2bool)
     parser.add_argument("--freeze_bn", default=False, type=str2bool)
     parser.add_argument("--freeze_bn_affine", default=False, type=str2bool)
-    parser.add_argument("--resnet_scaling", default=1, type=int)
+    parser.add_argument("--resnet_scaling", default=4, type=int)
     parser.add_argument("--vgg_scaling", default=None, type=int)
     parser.add_argument("--evonorm_version", default=None, type=str)
 

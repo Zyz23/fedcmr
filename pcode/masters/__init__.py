@@ -17,3 +17,4 @@ from .master_fedmd import *
 from .master_fjord import *
 from .master_fiarse import *
 from .master_fedsam import *
+from .master_fedswa import *
