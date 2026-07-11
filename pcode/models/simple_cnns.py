@@ -1297,8 +1297,8 @@ def simple_cnn(conf):
             return MetaCNN3(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias, rank_rate =rank_rate )
             # return MetaCNN3_Classifier(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias, rank_rate =rank_rate )
         # return CNNCifar(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
-        # return CNNCifar5Layer3(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
-        return MetaCNN5Fixed025(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
+        return CNNCifar5Layer3(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
+        # return MetaCNN5Fixed025(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
 
     
 
