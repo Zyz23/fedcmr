@@ -298,6 +298,9 @@ def get_args():
     parser.add_argument("--remote_exec", default=False, type=str2bool)
     parser.add_argument("--meta_L2", default=0, type=float)
     parser.add_argument("--anchor_loss",default=0, type=float)
+    parser.add_argument("--kd_loss",default=0, type=float)
+    parser.add_argument("--mixup_loss",default=0, type=float)
+
     # 病理分布配置
     parser.add_argument("--classes_per_client", default=2, type=int, help="Number of classes per client for pathological non-IID")
     # 容龄异构方法  heterofl实现

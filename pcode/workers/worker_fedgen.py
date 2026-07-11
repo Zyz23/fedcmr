@@ -5,7 +5,23 @@ from ..models.generator import *
 class WorkerFedGen(Worker):
     def __init__(self, conf):
         super().__init__(conf)
-        self.generative_model = Generator(self.conf.data, self.device)
+        # 【修改开始】与 Master 保持一致的维度推导逻辑，不需要访问 self.model
+        scaling = getattr(self.conf, "model_rate", getattr(self.conf, "resnet_scaling", 1))
+        
+        if "resnet" in self.conf.arch:
+            required_latent_dim = int(128 * scaling)
+        elif "femnist" in self.conf.data:
+            required_latent_dim = 2048
+        elif self.conf.data == "mnist":
+            required_latent_dim = 50
+        else:
+            required_latent_dim = 512
+        # 【修改结束】
+        self.generative_model = Generator(
+            self.conf.data, 
+            self.device,
+            ext_latent_dim=required_latent_dim
+        )
         self.generator_state_dict = self.generative_model.state_dict()
         self.generator_tb = TensorBuffer(list(self.generator_state_dict.values()))
 

@@ -18,6 +18,10 @@ from pcode.utils.timer import Timer
 from pcode.utils.stat_tracker import RuntimeTracker
 import  time
 import copy
+from pcode.utils.efficiency_profiler import (
+    begin_efficiency_profile,
+    finish_efficiency_profile,
+)
 try:
     import clip
 except ImportError:
@@ -267,6 +271,7 @@ class Worker(object):
                     data_batch = create_dataset.load_data_batch(    # 这里主要是将数据搬到cuda上
                         self.conf, _input, _target, is_training=True, device=self.device
                     )
+                    begin_efficiency_profile(self)
 
                 # inference and get current performance.
                 with self.timer("forward_pass", epoch=self.scheduler.epoch_):
@@ -282,6 +287,7 @@ class Worker(object):
                     torch.nn.utils.clip_grad_norm_(parameters=self.model.parameters(), max_norm=10) # 梯度裁剪，max_norm为允许的最大梯度
 
                     self.optimizer.step()
+                    finish_efficiency_profile(self, data_batch)
                     self.scheduler.step()
 
                 # check divergence.检查loss是否过大，防止将有毒参数上传

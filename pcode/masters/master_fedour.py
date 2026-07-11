@@ -546,6 +546,7 @@ import os
 import copy
 
 import numpy as np
+import torch.nn.functional as F
 import torch
 import torch.distributed as dist
 from pcode.utils.module_state import ModuleState
@@ -584,7 +585,7 @@ class MasterFedOur(object):
         # 恢复全局模型
 
         self.text_model, _ = self.load_clip_text_model()
-        self.anchor = self.generate_text_anchors()
+        self.anchor_raw, self.anchor = self.generate_text_anchors()
         self.output_dim = self.anchor[0].shape[-1] 
         conf.output_dim = self.output_dim
         self.conf = conf
@@ -840,7 +841,7 @@ class MasterFedOur(object):
                 int(total_layers * 3 / 4) - 1,
                 total_layers - 1
             ]
-            
+            raw_anchors_list = []
             anchors_list = []
             
             for i, layer in enumerate(layers):
@@ -855,11 +856,16 @@ class MasterFedOur(object):
                         sent_emb = self.text_model.ln_final(sent_emb).type(self.text_model.dtype)
                         sent_emb = sent_emb @ self.text_model.text_projection
                     
+                    
+                    # 保留原始文本表征
+                    raw_anchor= sent_emb.float()
                     # L2 归一化 (核心步骤)
-                    sent_emb = sent_emb / sent_emb.norm(dim=-1, keepdim=True)
-                    anchors_list.append(sent_emb.float()) 
+                    norm_anchor = F.normalize(raw_anchor, p=2, dim=-1)
 
-            return anchors_list # 返回 4 个层级的锚点 Tensor 列表
+                    raw_anchors_list.append(raw_anchor)
+                    anchors_list.append(norm_anchor) 
+
+            return raw_anchors_list, anchors_list # 返回 4 个层级的锚点 Tensor 列表
         # """
         # 根据数据集名称生成文本锚点 (Text Anchors)。
         

@@ -15,7 +15,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = str(CPU_THREADS)
 
 # 你的当前可见 GPU。
 # 若之后切换显卡，只改这里，例如 "0" 或 "2,3"。
-os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3,5,6,7"
 
 import time
 import random
@@ -92,7 +92,7 @@ MethodTable = {
 # ============================================================
 def random_rank_creater(count: int):
     candidate_values = np.array(
-        [0.25, 0.5, 0.75, 1.0],
+        [0.25],
         dtype=np.float32,
     )
 

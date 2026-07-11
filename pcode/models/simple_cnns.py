@@ -1060,6 +1060,213 @@ class HeteroCNNtiny(nn.Module):
         logits = self.classifier(feat)
         return feat, logits
 
+class MetaCNN3_Classifier(nn.Module):
+    def __init__(self, dataset, w_conv_bias=False, w_fc_bias=True, rank_rate=1.0):
+        super(MetaCNN3_Classifier, self).__init__()
+        
+        print("分类头低质模型")
+        self.num_classes = _decide_num_classes(dataset)
+        self.rank_rate = rank_rate  # 秩率
+        self.w_conv_bias = w_conv_bias
+        self.w_fc_bias = w_fc_bias
+
+        # 4层卷积主干（和原MetaCNN3完全一致，不改动）
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1, stride=1, bias=True)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1, stride=1, bias=True)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=1, bias=True)
+        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=1, bias=True)
+
+        self.pool = nn.MaxPool2d(2, 2)
+        self.relu = nn.ReLU(inplace=True)
+        self.flatten = nn.Flatten()
+        
+        self.flat_dim = 4096  # 32x32 cifar 展平维度
+        # 可分解FC1
+        if rank_rate >= 1.0:
+            self.fc1 = nn.Linear(self.flat_dim, 512)
+        else:
+            self.fc1 = FactorizedLinear(self.flat_dim, out_features=512, 
+                                        rank_rate=rank_rate, bias=w_fc_bias)
+
+        # ========== 新增独立标准分类头 ==========
+        self.classifier_head = nn.Linear(512, self.num_classes)
+
+        # CLIP 相关模块（保留原有原型推理分支）
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        self.clip_adapter = nn.Sequential(
+                nn.Linear(512, 512),
+                nn.ReLU(inplace=True),
+        )
+
+        # 主干序列
+        self.base = nn.Sequential(
+            self.conv1, self.relu, self.pool,
+            self.conv2, self.relu, self.pool,
+            self.conv3, self.relu, self.pool,
+            self.conv4, self.relu,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+
+    # def set_text_anchors(self, anchors):
+    #     anchors = F.normalize(anchors, p=2, dim=-1)
+    #     self.register_buffer('text_anchors', anchors, persistent=False)
+
+    def forward(self, x):
+        """
+        Args:
+            x: 输入图像
+            use_classifier_head: True=使用线性分类头输出logits；False=使用文本锚点相似度输出logits
+        Return:
+            aligned_feature: 经过clip适配器对齐后的512维特征
+            logits: 分类分数（二选一）
+        """
+        # 卷积+FC1提取基础特征
+        feat = self.base(x)
+        aligned_feature = self.clip_adapter(feat)
+        aligned_feature = F.normalize(aligned_feature, p=2, dim=-1)
+
+        logits = self.classifier_head(feat)
+
+        return aligned_feature, logits
+
+    # ====== 以下分解/恢复/正则loss函数完全复用原MetaCNN3逻辑，无需修改 ======
+    def decom_model(self, rank_rate):
+        if rank_rate >= 1.0:
+            return
+        print(f"Executing Decomposition (rank_rate={rank_rate})...")
+        if isinstance(self.fc1, nn.Linear):
+            self.fc1 = Decom_LINEAR(self.fc1, rank_rate)
+            print(" -> fc1 decomposed.")
+        self._rebuid_base()
+        self.rank_rate = rank_rate
+
+    def _rebuid_base(self):
+        self.base = nn.Sequential(
+            self.conv1, self.relu, self.pool,
+            self.conv2, self.relu, self.pool,
+            self.conv3, self.relu, self.pool,
+            self.conv4, self.relu,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+
+    def recover_model(self):
+        if self.rank_rate >= 1.0:
+            return
+        print("Executing Recovery to Full Rank...")
+        if isinstance(self.fc1, FactorizedLinear):
+            self.fc1 = Recover_LINEAR(self.fc1)
+            print(" -> fc1 recovered.")
+        self._rebuid_base()
+        self.rank_rate = 1.0
+
+    def L2_decay(self, type='frobenius'):
+        loss = torch.tensor(0.0, device=self.conv1.weight.device)
+        if self.rank_rate >= 1.0:
+            return loss
+        if isinstance(self.fc1, FactorizedLinear):
+            if type == 'frobenius': loss += self.fc1.frobenius_loss()
+            elif type == 'kronecker': loss += self.fc1.kronecker_loss()
+            elif type == 'l2': loss += self.fc1.L2_loss()
+        return loss
+
+
+class MetaCNN5Fixed025(nn.Module):
+    def __init__(self, dataset, w_conv_bias=False, w_fc_bias=True):
+        super(MetaCNN5Fixed025, self).__init__()
+        
+        self.num_classes = _decide_num_classes(dataset)
+        # 固定分解秩 0.25，不可外部传入修改
+        self.rank_rate = 0.25
+        self.w_conv_bias = w_conv_bias
+        self.w_fc_bias = w_fc_bias
+
+        # 卷积层完全和 CNNCifar5Layer 保持一致
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=5, padding=0, stride=1, bias=True)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=5, padding=0, stride=1, bias=True)
+
+        self.pool = nn.MaxPool2d(2, 2)
+        self.relu = nn.ReLU(inplace=True)
+        self.flatten = nn.Flatten()
+        
+        # 32x32 cifar 经过两次5卷积+两次池化后展平维度 1600
+        self.flat_dim = 1600
+        
+        # 直接实例化低秩分解FC1，固定rank_rate=0.25，不再做完整nn.Linear分支
+        self.fc1 = FactorizedLinear(self.flat_dim, out_features=512,
+                                    rank_rate=self.rank_rate, bias=w_fc_bias)
+
+        # 标准分类头，和基线CNNCifar5Layer统一
+        self.classifier = nn.Linear(512, self.num_classes, bias=w_fc_bias)
+        self.head = self.classifier
+
+        # 构建主干Sequential
+        self.base = nn.Sequential(
+            self.conv1,
+            self.relu,
+            self.pool,
+            self.conv2,
+            self.relu,
+            self.pool,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+
+    def forward(self, x, start_layer_idx=0):
+        if start_layer_idx < 0:
+            logits = self.head(x)
+            return x, logits
+        feat = self.base(x)
+        logits = self.head(feat)
+        return feat, logits
+
+    # 分解接口（当前已经是分解状态，rank=0.25，重复调用无操作）
+    def decom_model(self, rank_rate):
+        print(f"Current model is pre-decomposed with fixed rank_rate=0.25, skip re-decompose.")
+        return
+
+    def _rebuid_base(self):
+        """分解/恢复后重建主干序列"""
+        self.base = nn.Sequential(
+            self.conv1,
+            self.relu,
+            self.pool,
+            self.conv2,
+            self.relu,
+            self.pool,
+            self.flatten,
+            self.fc1,
+            self.relu
+        )
+
+    def recover_model(self):
+        """恢复fc1为完整稠密线性层"""
+        if self.rank_rate >= 1.0:
+            return
+        print("Executing Recovery to Full Rank...")
+        if isinstance(self.fc1, FactorizedLinear):
+            self.fc1 = Recover_LINEAR(self.fc1)
+            print(" -> fc1 recovered to full linear layer.")
+        self._rebuid_base()
+        self.rank_rate = 1.0
+
+    def L2_decay(self, type='frobenius'):
+        """低秩正则损失计算，仅fc1参与"""
+        loss = torch.tensor(0.0, device=self.conv1.weight.device)
+        if self.rank_rate >= 1.0:
+            return loss
+        if isinstance(self.fc1, FactorizedLinear):
+            if type == 'frobenius':
+                loss += self.fc1.frobenius_loss()
+            elif type == 'kronecker':
+                loss += self.fc1.kronecker_loss()
+            elif type == 'l2':
+                loss += self.fc1.L2_loss()
+        return loss
 
 def simple_cnn(conf):
     dataset = conf.data
@@ -1088,8 +1295,12 @@ def simple_cnn(conf):
             )
         if conf.meta: # 如果分解
             return MetaCNN3(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias, rank_rate =rank_rate )
+            # return MetaCNN3_Classifier(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias, rank_rate =rank_rate )
         # return CNNCifar(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
-        return CNNCifar5Layer3(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
+        # return CNNCifar5Layer3(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
+        return MetaCNN5Fixed025(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
+
+    
 
     elif "mnist" == dataset:
         return CNNMnist(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)

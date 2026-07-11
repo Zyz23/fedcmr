@@ -5,7 +5,7 @@ MAXLOG = 0.1
 
 
 class Generator(nn.Module):
-    def __init__(self, dataset='mnist', device='cpu', embedding=False, latent_layer_idx=-1):
+    def __init__(self, dataset='mnist', device='cpu', embedding=False, latent_layer_idx=-1,ext_latent_dim=None):
         super(Generator, self).__init__()
         print("Dataset {}".format(dataset))
         self.embedding = embedding
@@ -13,6 +13,9 @@ class Generator(nn.Module):
         # self.model=model
         self.latent_layer_idx = latent_layer_idx
         self.hidden_dim, self.latent_dim, self.input_channel, self.n_class, self.noise_dim = GENERATORCONFIGS[dataset]
+        # 【新增】如果外部传入了动态的维度，则覆盖默认配置 (比如 512 改为 256)
+        if ext_latent_dim is not None:
+            self.latent_dim = ext_latent_dim
         input_dim = self.noise_dim * 2 if self.embedding else self.noise_dim + self.n_class
         self.fc_configs = [input_dim, self.hidden_dim]
         self.init_loss_fn()

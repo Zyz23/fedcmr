@@ -22,6 +22,11 @@ import clip
 import os
 import math
 
+from pcode.utils.efficiency_profiler import (
+    begin_efficiency_profile,
+    finish_efficiency_profile,
+)
+
 class WorkerFedOur(object):
     def __init__(self, conf):
         
@@ -42,6 +47,12 @@ class WorkerFedOur(object):
         self.anchor_weight = torch.tensor([0.125, 0.25, 0.5, 1.0], device=self.device)
         self.text_model, _ = self.load_clip_text_model() # 加载文本编码器
         self.anchor = self.generate_text_anchors() #并生成锚点
+        # Text encoder is only used for one-time anchor construction.
+        # The local training phase uses cached self.anchor tensors.
+        del self.text_model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         self.output_dim = self.anchor[0].shape[-1] 
         
         print(f"Anchors generated. Count: {len(self.anchor)}, Dim: {self.output_dim}")
@@ -221,9 +232,12 @@ class WorkerFedOur(object):
                         sent_emb = self.text_model.ln_final(sent_emb).type(self.text_model.dtype)
                         sent_emb = sent_emb @ self.text_model.text_projection
                     
+                    # 保留原始文本表征
+                    raw_anchor= sent_emb.float()
                     # L2 归一化 (核心步骤)
-                    sent_emb = sent_emb / sent_emb.norm(dim=-1, keepdim=True)
-                    anchors_list.append(sent_emb.float()) 
+                    norm_anchor = F.normalize(raw_anchor, p=2, dim=-1)
+
+                    anchors_list.append(norm_anchor)
 
             return anchors_list # 返回 4 个层级的锚点 Tensor 列表
         
@@ -267,7 +281,15 @@ class WorkerFedOur(object):
         # pass
 
         # 将第4层（最后一层）的文本锚点传给模型
-            self.model.set_text_anchors(self.anchor[-1].clone().detach().to(self.device))
+            # self.model.set_text_anchors(self.anchor[-1].clone().detach().to(self.device))
+        """
+    原型锚点模型需要将文本锚点写入模型，
+    传统分类头模型不需要该步骤。
+    """
+        if hasattr(self.model, "set_text_anchors"):
+            self.model.set_text_anchors(
+                self.anchor[-1].clone().detach().to(self.device)
+            )    
 
     def listen_to_master(self):
         # listen to master, related to the function `_activate_selected_clients` in `master.py`.
@@ -346,7 +368,7 @@ class WorkerFedOur(object):
         # init the model and dataloader.
         if self.conf.graph.on_cuda:
             self.model = self.model.to(self.device)
-            self.text_model = self.text_model.to(self.device)
+            # self.text_model = self.text_model.to(self.device)
 
         self.optimizer = create_optimizer.define_optimizer(
             self.conf, model=self.model, optimizer_name=self.conf.optimizer
@@ -456,7 +478,7 @@ class WorkerFedOur(object):
                 # ------------------------------------------------------
                 # [模块 A]: 语义感知蒸馏 (辅助勾勒特征空间)
                 # ------------------------------------------------------
-                weight_idea_A = 3.0 
+                weight_idea_A = 3
                 if weight_idea_A > 0:
                     tau_sem = 0.1  
                     tau_model = 0.15 
@@ -480,7 +502,7 @@ class WorkerFedOur(object):
                 # ------------------------------------------------------
                 # [模块 B]: 特征级幻觉 Mixup (防数据缺失坍缩)
                 # ------------------------------------------------------
-                weight_idea_B = 0
+                weight_idea_B = 0.3
                 if weight_idea_B > 0:
                     batch_size = feature.size(0)
                     indices = torch.randperm(batch_size).to(self.device)
@@ -515,6 +537,8 @@ class WorkerFedOur(object):
             current_epoch = self.conf.graph.comm_round
             max_epochs = self.conf.n_comm_rounds
 
+            
+
             # # ==========================================================
             # # 1. MSE 稳定拉力 
             # # ==========================================================
@@ -524,15 +548,33 @@ class WorkerFedOur(object):
             # dynamic_weight = 0.5 + 8.5 * (1 - math.cos(math.pi * current_epoch / max_epochs)) / 2
             
             mse_loss = F.mse_loss(feature, sleleted_anchor)
+            
+            cosine_loss = (
+                1.0 - torch.sum(feature * sleleted_anchor, dim=1)
+            ).mean()
+            # anchor_term = self.conf.anchor_loss * anchor_align_loss
+
+
+    #         self.conf.logger.log(
+    #     f"[RAW-MSE CHECK] "
+    # f"ce={loss.item():.6f}, "
+    # f"raw_mse={anchor_align_loss.item():.8f}, "
+    # f"lambda={self.conf.anchor_loss:.4f}, "
+    # f"mse_term={anchor_term.item():.6f}, "
+    # f"||h||={raw_feature_norm.item():.6f}, "
+    # f"||a_raw||={raw_anchor_norm.item():.6f},"
+    # f"||a_||={anchor_norm.item():.6f},"
+    # )
+
             total_loss = total_loss + dynamic_weight * mse_loss #传入的基础 loss + l2_loss + MSE拉力
 
-            if current_epoch > 10:
+            if current_epoch > 20:
                 # # 计算本地特征与全局模型提取的特征的余弦相似度 (逐样本计算)
                 cosine_sim = torch.sum(feature * global_feature, dim=1)
                 # 目标是最大化相似度，所以 loss 为 (1 - similarity)
                 loss_global_distill = (1.0 - cosine_sim).mean()
                  # # 4. 汇总 Total Loss
-                total_loss = total_loss +dynamic_weight * loss_global_distill 
+                total_loss = total_loss + dynamic_weight * loss_global_distill 
             mu = 5.0 # 蒸馏权重
 
             
@@ -545,7 +587,7 @@ class WorkerFedOur(object):
             # [实验模块 A]: 语义感知蒸馏 (辅助勾勒特征空间)
             # ==========================================================
             # 【实验开关】：先设为 0，确认基本盘正常后，再设为 0.3 或 0.5
-            weight_idea_A = 0.0
+            weight_idea_A = 3
             
             if weight_idea_A > 0:
                 # tau_sem = 0.05
@@ -570,7 +612,7 @@ class WorkerFedOur(object):
             # [实验模块 B]: 特征级幻觉 Mixup (防数据缺失坍缩)
             # ==========================================================
             # 【实验开关】：必须等 Idea A 跑出效果后，再尝试设为 0.1 (千万不要太大)
-            weight_idea_B = 0.0
+            weight_idea_B = 0.1
             
             if weight_idea_B > 0:
                 batch_size = feature.size(0)
@@ -588,28 +630,18 @@ class WorkerFedOur(object):
                 
                 loss_virtual_mixup = (1.0 - torch.sum(virtual_features * virtual_anchors, dim=1)).mean()
                 total_loss += weight_idea_B * loss_virtual_mixup
+        #     self.conf.logger.log(
+        #     f"[RAW-MSE CHECK] "
+        # f"ce={loss.item():.6f}, "
+        # f"raw_mse={mse_loss.item():.8f}, "
+        # # f"lambda={loss_global_distill.item():.4f}, "
+        # f"mse_term={loss_virtual_mixup.item():.6f}, "
+        # f"||h||={loss_semantic_kd.item():.6f}, "
+        # # f"||a_raw||={raw_anchor_norm.item():.6f},"
+        # # f"||a_||={anchor_norm.item():.6f},"
+        # )
 
-            # # ==========================================================
-            # # [实验模块 C]: # 3.1 跨模态关系对齐 (Cross-Modal Relational Alignment)
-            # # ==========================================================
-            # # 
-            
-            # struct_weight = getattr(self.conf, 'struct_weight', 0.1)   # 可调节超参
-            # if struct_weight > 0 and feature is not None:
-            #     # 1. 视觉特征相似度矩阵（已经 L2 归一化，点积即余弦相似度）
-            #     S_vis = feature @ feature.T          # (B, B)
-
-            #     # 2. 对应类别的文本锚点相似度矩阵
-            #     #    self.anchor[-1] 形状为 (num_classes, D)，且已 L2 归一化
-            #     anchor_batch = self.anchor[-1][current_target].detach()  # (B, D)
-            #     S_text = anchor_batch @ anchor_batch.T                  # (B, B)
-
-            #     # 3. 结构对齐损失（MSE）
-            #     loss_struct = F.mse_loss(S_vis, S_text)
-
-            #     total_loss = total_loss + struct_weight * loss_struct
-            # total_loss = loss_semantic_kd + 0.5 * loss_virtual_mixup + dynamic_weight * loss_global_distill + l2_loss
-
+         
         return total_loss
 
     def add_grad(self):
@@ -627,10 +659,11 @@ class WorkerFedOur(object):
                     data_batch = create_dataset.load_data_batch(    # 这里主要是将数据搬到cuda上
                         self.conf, _input, _target, is_training=True, device=self.device
                     )
+                    begin_efficiency_profile(self)
 
                 # inference and get current performance.
                 with self.timer("forward_pass", epoch=self.scheduler.epoch_):
-                    loss, performance, output, feature = self._inference(data_batch)    # 前向传播
+                    loss, performance, output, feature  = self._inference(data_batch)    # 前向传播
 
                 # 同时效仿moon 提取全局刚下发的特征 也就是全局特征 
                 # # ==========================================
@@ -639,6 +672,8 @@ class WorkerFedOur(object):
                 with torch.no_grad():
                     # self.init_model 是从 Master 接收并冻结了梯度的全局模型
                     global_feature, _ = self.init_model(data_batch["input"])  
+
+                    
 
 
                                        
@@ -650,6 +685,7 @@ class WorkerFedOur(object):
                     torch.nn.utils.clip_grad_norm_(parameters=self.model.parameters(), max_norm=10) # 梯度裁剪，max_norm为允许的最大梯度
 
                     self.optimizer.step()
+                    finish_efficiency_profile(self, data_batch)
                     self.scheduler.step()
 
                 # check divergence.检查loss是否过大，防止将有毒参数上传
