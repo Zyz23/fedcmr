@@ -282,7 +282,7 @@ def main():
     parser.add_argument(
         "--max-round",
         type=int,
-        default=400,
+        default=200,
         help="Only keep rounds <= max-round. Default: 400.",
     )
     parser.add_argument(
@@ -498,9 +498,47 @@ python plot_top1.py \
     --output "./figures/Tiny-ImageNet_病理分布_smooth同构"
 
 
+     --method "FedAvg=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedavg中模型niid0.1p=0.2/1779975716_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedavg/0/log.txt" \
+    --method "FedAdam=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedadam中模型niid0.1p=0.2/1779680191_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedadam/0/log.txt" \
+    --method "FedDistill=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/feddistill_niid0.1中模型p=0.2/1779632645_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-feddistill/0/log.txt" \
+    --method "FedCMR (Ours)=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fed_our_noiid_0.1中模型p=0.2/1779591851_l2-0.0_lr-0.01_n_comm_rounds-300_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedour/0/log.txt" \
+    --method "FedDyn=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/feddyn中模型niid0.1p=0.2/1780663338_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-feddyn/0/log.txt" \
+    --method "FedDensemble=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedensemble中模型niid0.1p=0.2/1779631954_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedensemble/0/log.txt" \
+    --method "FedGen=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedgen——niid0.1p=0.2/1783002062_l2-1e-05_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedgen/0/log.txt" \
+    --method "FEdGKD=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedgkd中模型niid0.1p=0.2/1779617575_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedgkd/0/log.txt" \
+    --method "FedMoSWA=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedmoswa_Niid0.1中模型p=0.2/1782437212_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedmoswa/0/log.txt" \
+    --method "FedSWA=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedswa_Niid0.1中模型p=0.2/1782311038_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedswa/0/log.txt" \
+    --method "FedProx=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedprox中模型niid0.1p=0.2/1780310699_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedprox/0/log.txt" \
+    --method "FedSAM=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedsam_noiid_0.1中模型p=0.2/1781080172_l2-0.0_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedsam/0/log.txt" \
+    --method "Moon=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/moon_niid0.1中模型p=0.2/1779592215_l2-0.0001_lr-0.01_n_comm_rounds-300_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-moon/0/log.txt" \
+    --method "FedAlign=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedalign_Niid0.1中模型p=0.2/1783906374_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedalign/0/log.txt"
 
-
+# 同构tiny 0.1
 python plot_top1.py \
+    --method "FedAvg=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedavg中模型niid0.1p=0.2/1779975716_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedavg/0/log.txt" \
+    --method "FedAdam=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedadam中模型niid0.1p=0.2/1779680191_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedadam/0/log.txt" \
+    --method "FedDistill=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/feddistill_niid0.1中模型p=0.2/1779632645_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-feddistill/0/log.txt" \
+    --method "FedCMR (Ours)=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fed_our_noiid_0.1中模型p=0.2/1779591851_l2-0.0_lr-0.01_n_comm_rounds-300_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedour/0/log.txt" \
+    --method "FedDyn=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/feddyn中模型niid0.1p=0.2/1780663338_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-feddyn/0/log.txt" \
+    --method "FedDensemble=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedensemble中模型niid0.1p=0.2/1779631954_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedensemble/0/log.txt" \
+    --method "FedGen=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedgen——niid0.1p=0.2/1783002062_l2-1e-05_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedgen/0/log.txt" \
+    --method "FEdGKD=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedgkd中模型niid0.1p=0.2/1779617575_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedgkd/0/log.txt" \
+    --method "FedMoSWA=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedmoswa_Niid0.1中模型p=0.2/1782437212_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedmoswa/0/log.txt" \
+    --method "FedSWA=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedswa_Niid0.1中模型p=0.2/1782311038_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedswa/0/log.txt" \
+    --method "FedProx=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedprox中模型niid0.1p=0.2/1780310699_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedprox/0/log.txt" \
+    --method "FedSAM=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedsam_noiid_0.1中模型p=0.2/1781080172_l2-0.0_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedsam/0/log.txt" \
+    --method "Moon=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/moon_niid0.1中模型p=0.2/1779592215_l2-0.0001_lr-0.01_n_comm_rounds-300_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-moon/0/log.txt" \
+    --method "FedAlign=/data/zyz/Feds/FedGKD-main/data/checkpoint/imagenet_tiny/federated_averaging_cnn/fedalign_Niid0.1中模型p=0.2/1783906374_l2-0.0001_lr-0.01_n_comm_rounds-200_local_n_epochs-10.0_batchsize-64_n_clients_20_n_participated-4_optim-sgd_method-fedalign/0/log.txt" \
+    --title "Tiny-ImageNet (Practical: 0.1)" \
+    --max-round 200 \
+    --smooth-window 7 \
+    --y-min 0.0 \
+    --y-max 0.35 \
+    --output "./figures/Tiny-ImageNet_迪利克雷_smooth同构"
+
+
+cifar100 同构
+    python plot_top1.py \
     --method "FedAvg=" \
     --method "FedAdam=" \
     --method "FedDistill=" \
@@ -514,13 +552,13 @@ python plot_top1.py \
     --method "FedProx=" \
     --method "FedSAM=" \
     --method "Moon=" \
-    --title "CIFAR-100 (Pathological: 10/100)" \
-    --max-round 400 \
+    --method "FedAlign=" \
+    --title "Tiny-ImageNet (Practical: 0.1)" \
+    --max-round 200 \
     --smooth-window 7 \
     --y-min 0.0 \
-    --y-max 0.55 \
-    --output "./figures/cifar100_病理分布_smooth同构"
-
+    --y-max 0.35 \
+    --output "./figures/Tiny-ImageNet_迪利克雷_smooth同构"
 
 """
 

@@ -341,6 +341,14 @@ def get_args():
     parser.add_argument("--fiarse_global_lr", default=1.0, type=float)
     parser.add_argument("--fiarse_capacity_rates", default=None, type=str)
 
+    # FedGMR (ICML 2026), synchronous specialization for this Gloo runtime.
+    # Empty ladder derives the stages from --hetero_model_rates and appends 1.0.
+    parser.add_argument("--fedgmr_density_ladder", default="", type=str)
+    parser.add_argument("--fedgmr_patience", default=5, type=int)
+    parser.add_argument("--fedgmr_check_interval", default=5, type=int)
+    parser.add_argument("--fedgmr_min_delta", default=0.0, type=float)
+    parser.add_argument("--fedgmr_mask_refresh_interval", default=1, type=int)
+
     parser.add_argument("--fedsam_memory_lambda", default=0.5, type=float)
     parser.add_argument("--fedsam_similar_ratio", default=0.5, type=float)
     parser.add_argument("--fedsam_virtual_max_batches", default=0, type=int)
@@ -355,6 +363,38 @@ def get_args():
     parser.add_argument("--fedswa_weight_decay", default=1e-3, type=float)
     parser.add_argument("--fedswa_momentum", default=0.0, type=float)
     parser.add_argument("--fedmoswa_control_momentum", default=0.4, type=float)
+
+    # FedAlign (CVPR 2026): private moment alignment for homogeneous FL.
+    parser.add_argument("--fedalign_unsampled_ratio", default=0.2, type=float)
+    parser.add_argument(
+        "--fedalign_moments",
+        default="mean_var",
+        choices=["mean_var", "all"],
+        type=str,
+    )
+    parser.add_argument("--fedalign_alignment_strength", default=1.0, type=float)
+    parser.add_argument("--fedalign_stat_clip", default=10.0, type=float)
+    parser.add_argument(
+        "--fedalign_stat_noise_multiplier", default=0.0, type=float
+    )
+    parser.add_argument("--fedalign_update_clip", default=10.0, type=float)
+    parser.add_argument(
+        "--fedalign_update_noise_multiplier", default=0.0, type=float
+    )
+    parser.add_argument("--fedalign_server_lr", default=1.0, type=float)
+    parser.add_argument("--fedalign_max_stat_batches", default=0, type=int)
+    parser.add_argument("--fedalign_seed", default=2026, type=int)
+
+    # FedRE (CVPR 2026): representation entanglement for model-heterogeneous FL.
+    parser.add_argument("--fedre_feature_dim", default=512, type=int)
+    parser.add_argument("--fedre_server_lr", default=0.01, type=float)
+    parser.add_argument("--fedre_server_epochs", default=1, type=int)
+    parser.add_argument("--fedre_server_batch_size", default=10, type=int)
+    parser.add_argument("--fedre_server_momentum", default=0.0, type=float)
+    parser.add_argument("--fedre_max_proto_batches", default=0, type=int)
+    parser.add_argument("--fedre_eval_local", default=True, type=str2bool)
+    parser.add_argument("--fedre_eval_max_batches", default=0, type=int)
+    parser.add_argument("--fedre_seed", default=2026, type=int)
 
     parser.add_argument(
     "--feddse_profile_batches",

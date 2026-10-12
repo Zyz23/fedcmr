@@ -719,7 +719,7 @@ class Master(object):
         plt.tight_layout()
         
         # 6. 保存图片到 checkpoint 目录
-        save_path = os.path.join(self.conf.checkpoint_root, "global_model_tsne_final_round.png")
+        save_path = os.path.join(self.conf.checkpoint_root, "global_model_tsne_final_round.pdf")
         plt.savefig(save_path, dpi=300)
         plt.close()
         

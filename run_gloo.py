@@ -15,7 +15,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = str(CPU_THREADS)
 
 # 你的当前可见 GPU。
 # 若之后切换显卡，只改这里，例如 "0" 或 "2,3"。
-os.environ["CUDA_VISIBLE_DEVICES"] = "3,5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
 
 import time
 import random
@@ -48,6 +48,15 @@ from pcode.workers.worker_feddse import WorkerFedDSE
 
 from pcode.masters.master_fedlagc import MasterFedLAGC
 from pcode.workers.worker_fedlagc import WorkerFedLAGC
+
+from pcode.masters.master_fedalign import MasterFedAlign
+from pcode.workers.worker_fedalign import WorkerFedAlign
+
+from pcode.masters.master_fedre import MasterFedRE
+from pcode.workers.worker_fedre import WorkerFedRE
+
+from pcode.masters.master_fedgmr import MasterFedGMR
+from pcode.workers.worker_fedgmr import WorkerFedGMR
 
 
 # ============================================================
@@ -82,6 +91,9 @@ MethodTable = {
     "fedsam": [MasterFedSam, WorkerFedSam],
     "fedswa": [MasterFedSWA, WorkerFedSWA],
     "fedmoswa": [MasterFedMoSWA, WorkerFedMoSWA],
+    "fedalign": [MasterFedAlign, WorkerFedAlign],
+    "fedre": [MasterFedRE, WorkerFedRE],
+    "fedgmr": [MasterFedGMR, WorkerFedGMR],
 
     # "fedhm": [MasterFedHM, Worker_a],
 }
@@ -92,7 +104,7 @@ MethodTable = {
 # ============================================================
 def random_rank_creater(count: int):
     candidate_values = np.array(
-        [0.25],
+        [1],
         dtype=np.float32,
     )
 
@@ -173,7 +185,7 @@ def configure_capacity_rates(conf):
     width_hetero_methods:
         HeteroFL 等方法，容量表示网络宽度比例。
 
-    fiarse / fedlagc:
+    fiarse / fedlagc / fedgmr:
         容量表示参数保留比例或稀疏预算，
         物理网络结构保持完整。
     """
@@ -185,6 +197,7 @@ def configure_capacity_rates(conf):
         "fedmd",
         "fjord",
         "feddse",
+        "fedre",
     ]
 
     capacity_methods = [
@@ -197,6 +210,8 @@ def configure_capacity_rates(conf):
         "fiarse",
         "feddse",
         "fedlagc",
+        "fedre",
+        "fedgmr",
     ]
 
     if conf.method not in capacity_methods:
@@ -424,6 +439,8 @@ if __name__ == "__main__":
         "fiarse",
         "feddse",
         "fedlagc",
+        "fedre",
+        "fedgmr",
     ]
 
     if (
@@ -468,4 +485,3 @@ if __name__ == "__main__":
             "Federated execution failed. "
             f"Abnormal process PIDs: {failed_processes}"
         )
-

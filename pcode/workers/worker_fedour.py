@@ -44,7 +44,7 @@ class WorkerFedOur(object):
         )
         
         # create dataset (as well as the potential data_partitioner) for training.
-        self.anchor_weight = torch.tensor([0.125, 0.25, 0.5, 1.0], device=self.device)
+        self.anchor_weight = torch.tensor([0, 0.50, 0.75, 1.0], device=self.device)
         self.text_model, _ = self.load_clip_text_model() # 加载文本编码器
         self.anchor = self.generate_text_anchors() #并生成锚点
         # Text encoder is only used for one-time anchor construction.
@@ -473,12 +473,13 @@ class WorkerFedOur(object):
                     # 计算本地特征与全局特征的余弦相似度
                     cosine_sim = torch.sum(feature * global_feature, dim=1)
                     loss_global_distill = (1.0 - cosine_sim).mean()
-                    total_loss += dynamic_weight * loss_global_distill
+                    total_loss += 0 * loss_global_distill
                 
                 # ------------------------------------------------------
                 # [模块 A]: 语义感知蒸馏 (辅助勾勒特征空间)
                 # ------------------------------------------------------
-                weight_idea_A = 3
+                # weight_idea_A = 3
+                weight_idea_A = 0
                 if weight_idea_A > 0:
                     tau_sem = 0.1  
                     tau_model = 0.15 
@@ -502,7 +503,8 @@ class WorkerFedOur(object):
                 # ------------------------------------------------------
                 # [模块 B]: 特征级幻觉 Mixup (防数据缺失坍缩)
                 # ------------------------------------------------------
-                weight_idea_B = 0.3
+                # weight_idea_B = 0.3
+                weight_idea_B = 0.0
                 if weight_idea_B > 0:
                     batch_size = feature.size(0)
                     indices = torch.randperm(batch_size).to(self.device)
@@ -574,7 +576,7 @@ class WorkerFedOur(object):
                 # 目标是最大化相似度，所以 loss 为 (1 - similarity)
                 loss_global_distill = (1.0 - cosine_sim).mean()
                  # # 4. 汇总 Total Loss
-                total_loss = total_loss + dynamic_weight * loss_global_distill 
+                total_loss = total_loss + 0 * loss_global_distill 
             mu = 5.0 # 蒸馏权重
 
             
@@ -587,7 +589,7 @@ class WorkerFedOur(object):
             # [实验模块 A]: 语义感知蒸馏 (辅助勾勒特征空间)
             # ==========================================================
             # 【实验开关】：先设为 0，确认基本盘正常后，再设为 0.3 或 0.5
-            weight_idea_A = 3
+            weight_idea_A = 1.5
             
             if weight_idea_A > 0:
                 # tau_sem = 0.05
@@ -612,7 +614,7 @@ class WorkerFedOur(object):
             # [实验模块 B]: 特征级幻觉 Mixup (防数据缺失坍缩)
             # ==========================================================
             # 【实验开关】：必须等 Idea A 跑出效果后，再尝试设为 0.1 (千万不要太大)
-            weight_idea_B = 0.1
+            weight_idea_B = 0.3
             
             if weight_idea_B > 0:
                 batch_size = feature.size(0)

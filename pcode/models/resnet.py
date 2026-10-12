@@ -1897,7 +1897,7 @@ def resnet(conf, arch=None):
             #             num_classes=classes_size, rate=scaler_rate, track=track, cfg=cfg)
 
 
-        if conf.meta and conf.method not in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord"]:
+        if conf.meta and conf.method not in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord", "fedre", "fedgmr"]:
             if conf.arch == "resnet18":
                 model = hybrid_resnet18(ratio_LR=conf.ratio_LR, decom_rule=conf.decom_rule, cfg=conf)
             elif conf.arch == "resnet8":
@@ -1953,5 +1953,3 @@ def resnet(conf, arch=None):
     else:
         raise NotImplementedError
     return model
-
-

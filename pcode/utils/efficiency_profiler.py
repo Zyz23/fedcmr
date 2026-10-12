@@ -9,7 +9,7 @@ Usage:
 
 This profiler is called inside an already-running worker, so it measures:
 - the actual instantiated active local model;
-- the exact model.state_dict() payload sent/received by the worker;
+- the exact algorithm payload sent/received by the worker;
 - the peak CUDA memory of the real first local optimization step.
 
 Important:
@@ -116,6 +116,38 @@ def _state_dict_bytes(model: nn.Module) -> int:
         for value in model.state_dict().values()
         if torch.is_tensor(value)
     )
+
+
+def _communication_bytes(worker: Any) -> Tuple[int, int]:
+    """Return ``(download_bytes, upload_bytes)`` for one selected client."""
+
+    conf = worker.conf
+    if _method_name(conf) == "fedre":
+        feature_dim = int(getattr(conf, "fedre_feature_dim", 512))
+        num_classes = int(getattr(conf, "num_classes", 10))
+        scalar_bytes = 4  # FedRE communicates float32 tensors.
+
+        # Server -> client: Linear(D, C) weight and bias.
+        download_bytes = (feature_dim * num_classes + num_classes) * scalar_bytes
+        # Client -> server: one D-dimensional RAP vector and C-way soft label.
+        # Four local-evaluation scalars used only by the simulator are excluded.
+        upload_bytes = (feature_dim + num_classes) * scalar_bytes
+        return download_bytes, upload_bytes
+
+    if _method_name(conf) == "fedgmr":
+        state_bytes = _state_dict_bytes(worker.model)
+        mask_entries = sum(
+            int(mask.numel())
+            for mask in getattr(worker, "fedgmr_mask", {}).values()
+        )
+        # The current Gloo integration transports a float32 density followed
+        # by a float32 mask, then a dense TensorBuffer.  Sparse logical payload
+        # and IMS savings are deliberately not claimed by this profiler.
+        mask_metadata_bytes = (1 + mask_entries) * 4
+        return state_bytes + mask_metadata_bytes, state_bytes
+
+    state_bytes = _state_dict_bytes(worker.model)
+    return state_bytes, state_bytes
 
 
 def _module_bytes(model: Optional[nn.Module]) -> int:
@@ -286,11 +318,16 @@ def _make_record(
     reference_model = raw_init_model if uses_reference else None
     nonreference_resident_model = raw_init_model if not uses_reference else None
 
-    payload_bytes = _state_dict_bytes(model)
+    active_model_state_bytes = _state_dict_bytes(model)
+    download_bytes, upload_bytes = _communication_bytes(worker)
     _audit_state_dict(model, conf)
 
     # MAC forwards occur only after real peak memory has been captured above.
     active_forward_macs = forward_macs_per_sample(model, sample_input)
+    if _method_name(conf) == "fedre":
+        # ``model.forward`` returns the heterogeneous representation, after
+        # which WorkerFedRE invokes the attached shared classifier explicitly.
+        active_forward_macs += int(conf.fedre_feature_dim) * int(conf.num_classes)
     reference_forward_macs = forward_macs_per_sample(reference_model, sample_input)
 
     trainable_params = sum(
@@ -311,7 +348,7 @@ def _make_record(
 
     extra_init_model_mib = _module_bytes(nonreference_resident_model) / (1024 ** 2)
     notes = (
-        "Communication is the exact active-model state_dict payload. "
+        "Communication is the exact algorithm payload. "
         "Forward MACs count Conv2d and Linear operators only. "
         "FLOPs are reported as 2x MACs. "
         "Estimated training-step MACs use 3x active forward MACs plus the "
@@ -323,6 +360,17 @@ def _make_record(
             " A non-reference init_model is still resident in this worker; "
             "the reported peak GPU memory therefore reflects the actual "
             "implementation and includes this framework overhead."
+        )
+    if _method_name(conf) == "fedre":
+        notes += (
+            " FedRE download counts the shared Linear classifier; upload "
+            "counts one RAP representation and soft label. Simulator-only "
+            "evaluation metadata is excluded."
+        )
+    if _method_name(conf) == "fedgmr":
+        notes += (
+            " FedGMR reports the actual dense Gloo transport plus its float32 "
+            "mask metadata; it does not report hypothetical sparse/IMS bytes."
         )
 
     return {
@@ -342,7 +390,7 @@ def _make_record(
         "uses_round_initial_reference": bool(uses_reference),
         "trainable_parameters": int(trainable_params),
         "total_parameters": int(total_params),
-        "active_model_state_mib": payload_bytes / (1024 ** 2),
+        "active_model_state_mib": active_model_state_bytes / (1024 ** 2),
         "cached_anchor_mib": (
             _nested_tensor_bytes(getattr(worker, "anchor", None)) / (1024 ** 2)
         ),
@@ -355,11 +403,15 @@ def _make_record(
         "forward_gflops_per_sample": 2.0 * active_gmacs,
         "frozen_reference_forward_gmacs_per_sample": reference_gmacs,
         "estimated_training_step_gmacs_per_sample": estimated_training_step_gmacs,
-        "download_mib_per_selected_client": payload_bytes / (1024 ** 2),
-        "upload_mib_per_selected_client": payload_bytes / (1024 ** 2),
-        "bidirectional_mib_per_selected_client": 2.0 * payload_bytes / (1024 ** 2),
+        "download_mib_per_selected_client": download_bytes / (1024 ** 2),
+        "upload_mib_per_selected_client": upload_bytes / (1024 ** 2),
+        "bidirectional_mib_per_selected_client": (
+            download_bytes + upload_bytes
+        ) / (1024 ** 2),
         "bidirectional_mib_per_global_round": (
-            2.0 * payload_bytes * n_participated / (1024 ** 2)
+            (download_bytes + upload_bytes)
+            * n_participated
+            / (1024 ** 2)
         ),
         "n_participated": n_participated,
         "peak_allocated_gpu_mib": peak_allocated_mib,

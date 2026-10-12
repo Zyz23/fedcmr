@@ -1276,7 +1276,7 @@ def simple_cnn(conf):
 
     if "cifar" in dataset or dataset == "svhn":
 
-        if conf.method == "fedlagc":
+        if conf.method in ["fedlagc", "fedgmr"]:
             return HeteroCNNCifar(
                 dataset,
                 width_mult=1.0,
@@ -1285,7 +1285,7 @@ def simple_cnn(conf):
                 use_scaler=False,
             )
         
-        if conf.method in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord","feddse",]:
+        if conf.method in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord","feddse", "fedre"]:
             return HeteroCNNCifar(
                 dataset,
                 width_mult=getattr(conf, "model_rate", 1.0),
@@ -1305,7 +1305,7 @@ def simple_cnn(conf):
     elif "mnist" == dataset:
         return CNNMnist(dataset, w_conv_bias=conf.w_conv_bias, w_fc_bias=conf.w_fc_bias)
     elif "tiny" in dataset:
-        if conf.method == "fedlagc":
+        if conf.method in ["fedlagc", "fedgmr"]:
             return HeteroCNNtiny(
                 dataset,
                 width_mult=1.0,
@@ -1313,7 +1313,7 @@ def simple_cnn(conf):
                 w_fc_bias=conf.w_fc_bias,
                 use_scaler=False,
             )
-        if conf.method in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord","feddse",]:
+        if conf.method in ["heterofl", "fedrolex","feddropout", "feddf", "fedmd", "fjord","feddse", "fedre"]:
             return HeteroCNNtiny(
                 dataset,
                 width_mult=getattr(conf, "model_rate", 1.0),
